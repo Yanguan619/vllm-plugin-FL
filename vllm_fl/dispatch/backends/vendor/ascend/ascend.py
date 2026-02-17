@@ -170,16 +170,6 @@ class AscendBackend(Backend):
             return "vllm_fl.dispatch.backends.vendor.ascend.impl.attention.AscendMLABackend"
         return "vllm_fl.dispatch.backends.vendor.ascend.impl.attention.AscendAttentionBackend"
 
-    def fused_moe(self):
-        from vllm_fl.dispatch.backends.vendor.ascend.impl.fused_moe import (
-            AscendFusedMoE,
-        )
-
-        return AscendFusedMoE
-
-    def shared_fused_moe(self):
-        return "vllm_fl.dispatch.backends.vendor.ascend.impl.fused_moe.AscendSharedFusedMoE"
-
     def chunk_gated_delta_rule_fwd(
         self,
         q: torch.Tensor,

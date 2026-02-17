@@ -52,10 +52,11 @@ class AttentionMaskBuilder:
             Upper triangular attention mask tensor.
         """
         cls = AttentionMaskBuilder
-        if cls._chunked_prefill_mask is None or cls._chunked_prefill_mask_device != self.device:
-            cls._chunked_prefill_mask = (
-                torch.triu(torch.ones(2048, 2048), diagonal=1).to(torch.int8).to(self.device)
-            )
+        if (cls._chunked_prefill_mask is None or
+            cls._chunked_prefill_mask_device != self.device):
+            cls._chunked_prefill_mask = torch.triu(
+                torch.ones(2048, 2048), diagonal=1
+            ).to(torch.int8).to(self.device)
             cls._chunked_prefill_mask_device = self.device
         return cls._chunked_prefill_mask
 
@@ -78,7 +79,9 @@ class AttentionMaskBuilder:
                 mask_value = torch.finfo(torch.float32).min
             else:
                 mask_value = 1
-            prefill_mask = torch.triu(torch.ones(512, 512, device=self.device, dtype=dtype), 1)
+            prefill_mask = torch.triu(
+                torch.ones(512, 512, device=self.device, dtype=dtype), 1
+            )
             cls._mla_mask = torch.where(prefill_mask == 1, mask_value, 0).to(dtype)
             cls._mla_mask_dtype = dtype
         return cls._mla_mask
@@ -97,7 +100,9 @@ class AttentionMaskBuilder:
         """
         cls = AttentionMaskBuilder
         if cls._pcp_mla_mask is None or cls._pcp_mla_mask_dtype != dtype:
-            cls._pcp_mla_mask = torch.triu(torch.ones(512, 512, device=self.device, dtype=dtype), 1)
+            cls._pcp_mla_mask = torch.triu(
+                torch.ones(512, 512, device=self.device, dtype=dtype), 1
+            )
             cls._pcp_mla_mask_dtype = dtype
         return cls._pcp_mla_mask
 

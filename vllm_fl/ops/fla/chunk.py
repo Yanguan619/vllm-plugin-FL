@@ -1,13 +1,13 @@
 # Copyright (c) 2025 BAAI. All rights reserved.
 
-import os
 import warnings
-
+import os
 import torch
+
 from vllm.model_executor.custom_op import CustomOp
 from vllm.model_executor.layers.fla.ops.l2norm import l2norm_fwd
+from vllm.model_executor.layers.fla.ops.utils import input_guard
 
-from vllm_fl.ops.fla.utils import input_guard
 from vllm_fl.utils import use_flaggems_op
 
 if use_flaggems_op("chunk_gated_delta_rule_fwd"):
@@ -154,5 +154,4 @@ class ChunkGatedDeltaRuleOp(CustomOp):
             cu_seqlens,
             self.use_qk_l2norm_in_kernel,
         )
-        return o, final_state
         return o, final_state

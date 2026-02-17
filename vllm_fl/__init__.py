@@ -1,10 +1,10 @@
 # Copyright (c) 2025 BAAI. All rights reserved.
 
 
-import logging
 import os
-
+import logging
 from vllm_fl.utils import get_op_config as _get_op_config
+
 
 logger = logging.getLogger(__name__)
 
@@ -12,7 +12,6 @@ logger = logging.getLogger(__name__)
 def __getattr__(name):
     if name == "distributed":
         import importlib
-
         module = importlib.import_module(f".{name}", __name__)
         globals()[name] = module
         return module
@@ -36,14 +35,18 @@ def register_model():
     # Register Qwen3Next model
     try:
         ModelRegistry.register_model(
-            "Qwen3NextForCausalLM", "vllm_fl.models.qwen3_next:Qwen3NextForCausalLM"
+            "Qwen3NextForCausalLM",
+            "vllm_fl.models.qwen3_next:Qwen3NextForCausalLM"
         )
     except Exception as e:
         logger.error(f"Register Qwen3Next model error: {str(e)}")
 
     # Register MiniCPMO model
     try:
-        ModelRegistry.register_model("MiniCPMO", "vllm_fl.models.minicpmo:MiniCPMO")
+        ModelRegistry.register_model(
+            "MiniCPMO",
+            "vllm_fl.models.minicpmo:MiniCPMO"
+        )
     except Exception as e:
         logger.error(f"Register MiniCPMO model error: {str(e)}")
 
@@ -51,7 +54,7 @@ def register_model():
     try:
         ModelRegistry.register_model(
             "KimiK25ForConditionalGeneration",
-            "vllm_fl.models.kimi_k25:KimiK25ForConditionalGeneration",
+            "vllm_fl.models.kimi_k25:KimiK25ForConditionalGeneration"
         )
     except Exception as e:
         logger.error(f"Register KimiK25 model error: {str(e)}")

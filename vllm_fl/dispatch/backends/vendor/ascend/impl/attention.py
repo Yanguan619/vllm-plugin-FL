@@ -48,7 +48,6 @@ logger = logging.getLogger(__name__)
 _TORCH_NPU_AVAILABLE = False
 try:
     import torch_npu
-
     _TORCH_NPU_AVAILABLE = True
 
     # NPU compatibility: Replace torch.Event and torch.cuda.Stream with NPU versions
@@ -76,7 +75,6 @@ ASCEND_SAMPLED_TOKEN_IDS_DTYPE = torch.int32  # NPU uses int32, CUDA uses int64
 
 class AscendAttentionState(Enum):
     """Attention state for Ascend backend."""
-
     PrefillNoCache = 0
     PrefillCacheHit = 1
     DecodeOnly = 2
@@ -238,7 +236,7 @@ class AscendAttentionMetadataBuilder:
         self.device = device
         self.max_num_blocks_per_req = cdiv(
             self.model_config.max_model_len,
-            AscendAttentionBackend.get_supported_block_size()[0],
+            AscendAttentionBackend.get_supported_block_size()[0]
         )
 
         self.speculative_config = vllm_config.speculative_config
@@ -301,12 +299,11 @@ class AscendAttentionMetadataBuilder:
         """Build AscendMetadata from common attention metadata."""
         num_reqs = common_attn_metadata.num_reqs
         num_actual_tokens = common_attn_metadata.num_actual_tokens
-        query_start_loc_cpu = common_attn_metadata.query_start_loc_cpu[: num_reqs + 1]
+        query_start_loc_cpu = common_attn_metadata.query_start_loc_cpu[:num_reqs + 1]
 
         # Split decodes and prefills
-        num_decodes, num_prefills, num_decode_tokens, num_prefill_tokens = (
+        num_decodes, num_prefills, num_decode_tokens, num_prefill_tokens = \
             self._split_decodes_and_prefills(common_attn_metadata)
-        )
 
         block_table = common_attn_metadata.block_table_tensor
         seq_lens = common_attn_metadata.seq_lens_cpu[:num_reqs]
@@ -320,7 +317,8 @@ class AscendAttentionMetadataBuilder:
         # Create attention mask based on state
         attn_mask = self._make_attention_mask(attn_state)
 
-        query_start_loc = query_start_loc_cpu.pin_memory().to(self.device, non_blocking=True)
+        query_start_loc = query_start_loc_cpu.pin_memory().to(
+            self.device, non_blocking=True)
 
         return AscendMetadata(
             num_actual_tokens=num_actual_tokens,
@@ -328,7 +326,7 @@ class AscendAttentionMetadataBuilder:
             block_tables=block_table,
             query_start_loc=query_start_loc,
             seq_lens=seq_lens,
-            seq_lens_list=seq_lens.tolist() if hasattr(seq_lens, "tolist") else list(seq_lens),
+            seq_lens_list=seq_lens.tolist() if hasattr(seq_lens, 'tolist') else list(seq_lens),
             max_query_len=common_attn_metadata.max_query_len,
             actual_seq_lengths_q=query_start_loc_cpu[1:].tolist(),
             slot_mapping=slot_mapping,
@@ -336,7 +334,7 @@ class AscendAttentionMetadataBuilder:
             attn_state=attn_state,
             num_prefills=num_prefills,
             num_decodes=num_decodes,
-            causal=getattr(common_attn_metadata, "causal", True),
+            causal=getattr(common_attn_metadata, 'causal', True),
             model_runner_type=self.model_config.runner_type,
         )
 
@@ -430,7 +428,6 @@ class AscendAttentionBackend(AttentionBackend):
     Uses torch_npu operators directly for high-performance attention on
     Huawei Ascend NPUs.
     """
-
     accept_output_buffer: bool = True
 
     @staticmethod
@@ -466,8 +463,10 @@ class AscendAttentionBackend(AttentionBackend):
         src_indices = src_to_dst[:, 0]
         dst_indices = src_to_dst[:, 1]
 
-        dst_key_cache[dst_indices] = src_key_cache[src_indices].to(dst_key_cache.device)
-        dst_value_cache[dst_indices] = src_value_cache[src_indices].to(dst_key_cache.device)
+        dst_key_cache[dst_indices] = src_key_cache[src_indices].to(
+            dst_key_cache.device)
+        dst_value_cache[dst_indices] = src_value_cache[src_indices].to(
+            dst_key_cache.device)
 
     @staticmethod
     def copy_blocks(
@@ -528,7 +527,11 @@ class AscendAttentionBackendImpl(AttentionImpl):
         self.sliding_window = sliding_window
 
         if alibi_slopes is not None:
-            alibi_slopes = torch.tensor(alibi_slopes, dtype=torch.float32, device="npu")
+            alibi_slopes = torch.tensor(
+                alibi_slopes,
+                dtype=torch.float32,
+                device="npu"
+            )
         self.alibi_slopes = alibi_slopes
         self.attn_type = attn_type
 
@@ -589,11 +592,11 @@ class AscendAttentionBackendImpl(AttentionImpl):
                 slots = slots.to(torch.int32)
             # Use torch_npu reshape_and_cache
             torch_npu._npu_reshape_and_cache(
-                key=key[: attn_metadata.num_actual_tokens],
-                value=value[: attn_metadata.num_actual_tokens],
+                key=key[:attn_metadata.num_actual_tokens],
+                value=value[:attn_metadata.num_actual_tokens],
                 key_cache=self.key_cache,
                 value_cache=self.value_cache,
-                slot_indices=slots[: attn_metadata.num_actual_tokens],
+                slot_indices=slots[:attn_metadata.num_actual_tokens]
             )
         return key, value
 
@@ -606,16 +609,8 @@ class AscendAttentionBackendImpl(AttentionImpl):
         output: torch.Tensor,
     ) -> torch.Tensor:
         """Forward pass using fused_infer_attention_score."""
-        if query.size(0) == 1:
-            attn_metadata.attn_state = AscendAttentionState.DecodeOnly
-            attn_metadata.attn_mask = torch.triu(
-                torch.ones(2048, 2048, device=query.device),
-                diagonal=1,
-            )
-
-        key, value, block_size, block_table, actual_seq_lengths_kv = self._get_fia_params(
-            key, value, attn_metadata
-        )
+        key, value, block_size, block_table, actual_seq_lengths_kv = \
+            self._get_fia_params(key, value, attn_metadata)
 
         num_tokens = attn_metadata.actual_seq_lengths_q[-1]
         query = query[:num_tokens]
@@ -663,7 +658,7 @@ class AscendAttentionBackendImpl(AttentionImpl):
             scale_value=self.scale,
             block_table=attn_metadata.block_tables,
             context_lens=attn_metadata.seq_lens,
-            out=output,
+            out=output
         )
         return output
 
@@ -715,16 +710,15 @@ class AscendAttentionBackendImpl(AttentionImpl):
         output: torch.Tensor,
     ):
         """Forward implementation dispatching to appropriate attention method."""
-        _num_tokens = query.shape[0]
+        num_tokens = query.shape[0]
 
         # Use paged attention for decode-only state
-        if (
-            attn_metadata.attn_state == AscendAttentionState.DecodeOnly
-            and self.sliding_window is None
-        ):
+        if (attn_metadata.attn_state == AscendAttentionState.DecodeOnly
+                and self.sliding_window is None):
             output = self.forward_paged_attention(query, attn_metadata, output)
         else:
-            output = self.forward_fused_infer_attention(query, key, value, attn_metadata, output)
+            output = self.forward_fused_infer_attention(
+                query, key, value, attn_metadata, output)
 
         return output
 
@@ -761,7 +755,8 @@ class AscendAttentionBackendImpl(AttentionImpl):
 
         if output_scale is not None or output_block_scale is not None:
             raise NotImplementedError(
-                "Fused output quantization is not yet supported for AscendAttentionBackendImpl"
+                "Fused output quantization is not yet supported "
+                "for AscendAttentionBackendImpl"
             )
 
         assert layer._k_scale_float == 1.0 and layer._v_scale_float == 1.0
@@ -769,7 +764,8 @@ class AscendAttentionBackendImpl(AttentionImpl):
         attn_type = self.attn_type
         if attn_type not in [AttentionType.DECODER, AttentionType.ENCODER_ONLY]:
             raise NotImplementedError(
-                "Encoder/Decoder cross-attention is not implemented for AscendAttentionBackendImpl"
+                "Encoder/Decoder cross-attention is not implemented for "
+                "AscendAttentionBackendImpl"
             )
 
         num_tokens = query.shape[0]
@@ -784,12 +780,14 @@ class AscendAttentionBackendImpl(AttentionImpl):
 
         # Handle pooling model branch (encoder attention)
         if attn_metadata.model_runner_type == "pooling":
-            attn_output = self._forward_encoder_attention(query, key, value, attn_metadata, output)
+            attn_output = self._forward_encoder_attention(
+                query, key, value, attn_metadata, output)
             output[:num_tokens] = attn_output[:num_tokens]
             return output
 
         # Standard forward
-        output = self.forward_impl(query, key, value, kv_cache, attn_metadata, output)
+        output = self.forward_impl(
+            query, key, value, kv_cache, attn_metadata, output)
         return output
 
 

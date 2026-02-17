@@ -28,10 +28,13 @@ from vllm.distributed import (
     get_tensor_model_parallel_world_size,
     tensor_model_parallel_all_gather,
 )
-from vllm.forward_context import get_forward_context
+from vllm.forward_context import ForwardContext, get_forward_context
 from vllm.logger import init_logger
+from vllm.model_executor.layers.fused_moe import SharedFusedMoE
 from vllm.model_executor.layers.fused_moe.config import RoutingMethodType
-from vllm.model_executor.layers.layernorm import GemmaRMSNorm as Qwen3NextRMSNorm
+from vllm.model_executor.layers.layernorm import (
+    GemmaRMSNorm as Qwen3NextRMSNorm,
+)
 from vllm.model_executor.layers.layernorm import RMSNormGated
 from vllm.model_executor.layers.linear import (
     ColumnParallelLinear,
@@ -45,6 +48,10 @@ from vllm.model_executor.layers.mamba.mamba_mixer2 import mamba_v2_sharded_weigh
 from vllm.model_executor.layers.mamba.mamba_utils import (
     MambaStateDtypeCalculator,
     MambaStateShapeCalculator,
+)
+from vllm.model_executor.layers.mamba.ops.causal_conv1d import (
+    causal_conv1d_fn,
+    causal_conv1d_update,
 )
 from vllm.model_executor.layers.quantization import QuantizationConfig
 from vllm.model_executor.layers.rotary_embedding import get_rope
@@ -79,6 +86,8 @@ from vllm.model_executor.utils import set_weight_attrs
 from vllm.platforms import current_platform
 from vllm.sequence import IntermediateTensors
 from vllm.transformers_utils.configs import Qwen3NextConfig
+from vllm.triton_utils import triton
+from vllm.utils.torch_utils import direct_register_custom_op
 from vllm.v1.attention.backends.gdn_attn import GDNAttentionMetadata
 
 from vllm_fl.dispatch import resolve_op
@@ -100,7 +109,6 @@ causal_conv1d_update = resolve_op("causal_conv1d_update")
 logger = init_logger(__name__)
 
 KVCache = tuple[torch.Tensor, torch.Tensor]
-
 
 class Qwen3NextSparseMoeBlock(nn.Module):
     def __init__(self, vllm_config: VllmConfig, prefix: str = ""):
@@ -136,7 +144,9 @@ class Qwen3NextSparseMoeBlock(nn.Module):
         self.n_local_physical_experts = self.n_physical_experts // self.ep_size
 
         self.physical_expert_start = self.ep_rank * self.n_local_physical_experts
-        self.physical_expert_end = self.physical_expert_start + self.n_local_physical_experts
+        self.physical_expert_end = (
+            self.physical_expert_start + self.n_local_physical_experts
+        )
 
         self.gate = ReplicatedLinear(
             config.hidden_size,
@@ -203,7 +213,9 @@ class Qwen3NextSparseMoeBlock(nn.Module):
             final_hidden_states = final_hidden_states[0] + final_hidden_states[1]
 
         if self.is_sequence_parallel:
-            final_hidden_states = tensor_model_parallel_all_gather(final_hidden_states, 0)
+            final_hidden_states = tensor_model_parallel_all_gather(
+                final_hidden_states, 0
+            )
             final_hidden_states = final_hidden_states[:num_tokens]
         elif self.tp_size > 1:
             final_hidden_states = self.experts.maybe_all_reduce_tensor_model_parallel(  # noqa E501
@@ -213,7 +225,6 @@ class Qwen3NextSparseMoeBlock(nn.Module):
         return final_hidden_states.view(orig_shape)
 
 
-# nan
 class Qwen3NextGatedDeltaNet(nn.Module, MambaBase):
     @property
     def mamba_type(self) -> str:
@@ -268,7 +279,9 @@ class Qwen3NextGatedDeltaNet(nn.Module, MambaBase):
         self.quant_config = quant_config
         self.speculative_config = speculative_config
         self.num_spec = (
-            self.speculative_config.num_speculative_tokens if self.speculative_config else 0
+            self.speculative_config.num_speculative_tokens
+            if self.speculative_config
+            else 0
         )
 
         # QKV
@@ -358,7 +371,7 @@ class Qwen3NextGatedDeltaNet(nn.Module, MambaBase):
             raise ValueError(f"Duplicate layer name: {prefix}")
         compilation_config.static_forward_context[prefix] = self
         self.chunk_gated_delta_rule = ChunkGatedDeltaRuleOp(
-            output_final_state=True,
+            output_final_state = True,
             use_qk_l2norm_in_kernel=True,
         )
 
@@ -384,7 +397,9 @@ class Qwen3NextGatedDeltaNet(nn.Module, MambaBase):
             (
                 self.head_k_dim
                 + self.head_k_dim
-                + (self.head_v_dim + self.head_v_dim) * self.num_v_heads // self.num_k_heads
+                + (self.head_v_dim + self.head_v_dim)
+                * self.num_v_heads
+                // self.num_k_heads
             ),
         )
         new_tensor_shape_ba = mixed_qkvz.size()[:-1] + (
@@ -432,9 +447,12 @@ class Qwen3NextGatedDeltaNet(nn.Module, MambaBase):
             ],
             dim=-1,
         )
-        query, key = (rearrange(x, "l (h d) -> 1 l h d", d=self.head_k_dim) for x in (query, key))
+        query, key = map(
+            lambda x: rearrange(x, "l (h d) -> 1 l h d", d=self.head_k_dim),
+            (query, key),
+        )
         value = rearrange(value, "l (h d) -> 1 l h d", d=self.head_v_dim)
-        return query.contiguous(), key.contiguous(), value.contiguous()
+        return query, key, value
 
     def forward(
         self,
@@ -457,7 +475,9 @@ class Qwen3NextGatedDeltaNet(nn.Module, MambaBase):
         query, key, value, z, b, a = self.fix_query_key_value_ordering(
             projected_states_qkvz, projected_states_ba
         )
-        query, key, value = (rearrange(x, "l p d -> l (p d)") for x in (query, key, value))
+        query, key, value = map(
+            lambda x: rearrange(x, "l p d -> l (p d)"), (query, key, value)
+        )
         mixed_qkv = torch.cat((query, key, value), dim=-1)
 
         # ============================================================
@@ -585,14 +605,18 @@ class Qwen3NextGatedDeltaNet(nn.Module, MambaBase):
                 conv_weights,
                 self.conv1d.bias,
                 self.activation,
-                conv_state_indices=non_spec_state_indices_tensor[: attn_metadata.num_actual_tokens],
+                conv_state_indices=non_spec_state_indices_tensor[
+                    : attn_metadata.num_actual_tokens
+                ],
                 validate_data=True,
             )
         else:
             mixed_qkv_non_spec = None
 
         query_spec, key_spec, value_spec = self.rearrange_mixed_qkv(mixed_qkv_spec)
-        query_non_spec, key_non_spec, value_non_spec = self.rearrange_mixed_qkv(mixed_qkv_non_spec)
+        query_non_spec, key_non_spec, value_non_spec = self.rearrange_mixed_qkv(
+            mixed_qkv_non_spec
+        )
 
         g, beta = fused_gdn_gating(self.A_log, a, b, self.dt_bias)
 
@@ -617,18 +641,16 @@ class Qwen3NextGatedDeltaNet(nn.Module, MambaBase):
 
         # 2.1: Process the multi-query part
         if spec_sequence_masks is not None:
-            core_attn_out_spec, last_recurrent_state = (
-                self.fused_recurrent_gated_delta_rule_multi_query(
-                    q=query_spec,
-                    k=key_spec,
-                    v=value_spec,
-                    g=g_spec,
-                    beta=beta_spec,
-                    initial_state=ssm_state,
-                    cu_seqlens=spec_query_start_loc[: attn_metadata.num_spec_decodes + 1],
-                    ssm_state_indices=spec_state_indices_tensor,
-                    num_accepted_tokens=num_accepted_tokens,
-                )
+            core_attn_out_spec, last_recurrent_state = self.fused_recurrent_gated_delta_rule_multi_query(
+                q=query_spec,
+                k=key_spec,
+                v=value_spec,
+                g=g_spec,
+                beta=beta_spec,
+                initial_state=ssm_state,
+                cu_seqlens=spec_query_start_loc[: attn_metadata.num_spec_decodes + 1],
+                ssm_state_indices=spec_state_indices_tensor,
+                num_accepted_tokens=num_accepted_tokens,
             )
         else:
             core_attn_out_spec, last_recurrent_state = None, None
@@ -641,16 +663,18 @@ class Qwen3NextGatedDeltaNet(nn.Module, MambaBase):
                 core_attn_out_non_spec,
                 last_recurrent_state,
             ) = self.chunk_gated_delta_rule(
-                q=query_non_spec,
-                k=key_non_spec,
-                v=value_non_spec,
+                q=query_non_spec.contiguous(),
+                k=key_non_spec.contiguous(),
+                v=value_non_spec.contiguous(),
                 g=g_non_spec,
                 beta=beta_non_spec,
                 initial_state=initial_state,
                 cu_seqlens=non_spec_query_start_loc,
             )
             # Init cache
-            ssm_state[non_spec_state_indices_tensor] = last_recurrent_state.to(ssm_state.dtype)
+            ssm_state[non_spec_state_indices_tensor] = last_recurrent_state.to(
+                ssm_state.dtype
+            )
         elif attn_metadata.num_decodes > 0:
             core_attn_out_non_spec, last_recurrent_state = (
                 self.fused_recurrent_gated_delta_rule_remain_query(
@@ -660,7 +684,9 @@ class Qwen3NextGatedDeltaNet(nn.Module, MambaBase):
                     g=g_non_spec,
                     beta=beta_non_spec,
                     initial_state=ssm_state,
-                    cu_seqlens=non_spec_query_start_loc[: attn_metadata.num_decodes + 1],
+                    cu_seqlens=non_spec_query_start_loc[
+                        : attn_metadata.num_decodes + 1
+                    ],
                     ssm_state_indices=non_spec_state_indices_tensor,
                 )
             )
@@ -713,7 +739,9 @@ class Qwen3NextAttention(nn.Module):
         self.q_size = self.num_heads * self.head_dim
         self.kv_size = self.num_kv_heads * self.head_dim
         self.scaling = self.head_dim**-0.5
-        self.dual_chunk_attention_config = getattr(config, "dual_chunk_attention_config", None)
+        self.dual_chunk_attention_config = getattr(
+            config, "dual_chunk_attention_config", None
+        )
         self.attn_output_gate = getattr(config, "attn_output_gate", True)
 
         self.qkv_proj = QKVParallelLinear(
@@ -769,7 +797,9 @@ class Qwen3NextAttention(nn.Module):
         qkv, _ = self.qkv_proj(hidden_states)
 
         if self.attn_output_gate:
-            q_gate, k, v = qkv.split([self.q_size * 2, self.kv_size, self.kv_size], dim=-1)
+            q_gate, k, v = qkv.split(
+                [self.q_size * 2, self.kv_size, self.kv_size], dim=-1
+            )
             orig_shape = q_gate.shape[:-1]
             q_gate = q_gate.view(*orig_shape, self.num_heads, -1)
             q, gate = torch.chunk(q_gate, 2, dim=-1)
@@ -833,9 +863,12 @@ class Qwen3NextDecoderLayer(nn.Module):
         else:
             raise ValueError(f"Invalid layer_type {self.layer_type}")
 
-        mlp_only_layers = [] if not hasattr(config, "mlp_only_layers") else config.mlp_only_layers
+        mlp_only_layers = (
+            [] if not hasattr(config, "mlp_only_layers") else config.mlp_only_layers
+        )
         if (self.layer_idx not in mlp_only_layers) and (
-            config.num_experts > 0 and (self.layer_idx + 1) % config.decoder_sparse_step == 0
+            config.num_experts > 0
+            and (self.layer_idx + 1) % config.decoder_sparse_step == 0
         ):
             self.mlp = Qwen3NextSparseMoeBlock(
                 vllm_config=vllm_config,
@@ -849,7 +882,9 @@ class Qwen3NextDecoderLayer(nn.Module):
                 quant_config=quant_config,
             )
 
-        self.input_layernorm = Qwen3NextRMSNorm(config.hidden_size, eps=config.rms_norm_eps)
+        self.input_layernorm = Qwen3NextRMSNorm(
+            config.hidden_size, eps=config.rms_norm_eps
+        )
         self.post_attention_layernorm = Qwen3NextRMSNorm(
             config.hidden_size, eps=config.rms_norm_eps
         )
@@ -908,7 +943,9 @@ class Qwen3NextDecoderLayer(nn.Module):
                     self.attn_layer_scale.to(hidden_states.dtype)[0] + 1
                 )
             else:
-                hidden_states = hidden_states * (self.attn_layer_scale.to(hidden_states.dtype) + 1)
+                hidden_states = hidden_states * (
+                    self.attn_layer_scale.to(hidden_states.dtype) + 1
+                )
 
         # Fully Connected
         hidden_states, residual = self.post_attention_layernorm(hidden_states, residual)
@@ -925,7 +962,9 @@ class Qwen3NextDecoderLayer(nn.Module):
                     f"shape must be the same {len(hidden_states.shape)}, "
                     f"{len(self.ffn_layer_scale.shape)}"
                 )
-                hidden_states = hidden_states * (self.ffn_layer_scale.to(hidden_states.dtype) + 1)
+                hidden_states = hidden_states * (
+                    self.ffn_layer_scale.to(hidden_states.dtype) + 1
+                )
 
         return hidden_states, residual
 
@@ -998,7 +1037,9 @@ class Qwen3NextModel(nn.Module):
             )
 
         if not get_pp_group().is_last_rank:
-            return IntermediateTensors({"hidden_states": hidden_states, "residual": residual})
+            return IntermediateTensors(
+                {"hidden_states": hidden_states, "residual": residual}
+            )
         hidden_states, _ = self.norm(hidden_states, residual)
         return hidden_states
 
@@ -1092,7 +1133,9 @@ class Qwen3NextModel(nn.Module):
                         )
                         continue
                     param = params_dict[name]
-                    weight_loader = getattr(param, "weight_loader", default_weight_loader)
+                    weight_loader = getattr(
+                        param, "weight_loader", default_weight_loader
+                    )
                     weight_loader(param, loaded_weight)
             loaded_params.add(name)
         return loaded_params
@@ -1174,7 +1217,9 @@ class Qwen3NextForCausalLM(
         super().__init__()
         self.config = config
         self.scheduler_config = scheduler_config
-        self.model = Qwen3NextModel(vllm_config=vllm_config, prefix=maybe_prefix(prefix, "model"))
+        self.model = Qwen3NextModel(
+            vllm_config=vllm_config, prefix=maybe_prefix(prefix, "model")
+        )
 
         self.lm_head = ParallelLMHead(
             config.vocab_size,
@@ -1182,7 +1227,9 @@ class Qwen3NextForCausalLM(
             prefix=maybe_prefix(prefix, "lm_head"),
         )
         self.logits_processor = LogitsProcessor(config.vocab_size)
-        self.make_empty_intermediate_tensors = self.model.make_empty_intermediate_tensors
+        self.make_empty_intermediate_tensors = (
+            self.model.make_empty_intermediate_tensors
+        )
 
         # Set MoE hyperparameters
         self.set_moe_parameters()
@@ -1198,7 +1245,9 @@ class Qwen3NextForCausalLM(
         inputs_embeds: torch.Tensor | None = None,
         **kwargs: object,
     ):
-        hidden_states = self.model(input_ids, positions, intermediate_tensors, inputs_embeds)
+        hidden_states = self.model(
+            input_ids, positions, intermediate_tensors, inputs_embeds
+        )
 
         return hidden_states
 
@@ -1248,3 +1297,117 @@ class Qwen3NextForCausalLM(
 
     def get_expert_mapping(self) -> list[tuple[str, str, int, str]]:
         return self.model.get_expert_mapping()
+
+
+def gdn_attention_core(
+    mixed_qkv: torch.Tensor,
+    b: torch.Tensor,
+    a: torch.Tensor,
+    core_attn_out: torch.Tensor,
+    layer_name: str,
+) -> None:
+    """
+    Custom op for the core attention computation.
+    Only handles the convolution + recurrent attention part.
+    Input/output projections are handled outside this op.
+    """
+    forward_context: ForwardContext = get_forward_context()
+    self = forward_context.no_compile_layers[layer_name]
+    self._forward_core(
+        mixed_qkv=mixed_qkv,
+        b=b,
+        a=a,
+        core_attn_out=core_attn_out,
+    )
+
+
+def gdn_attention_core_fake(
+    mixed_qkv: torch.Tensor,
+    b: torch.Tensor,
+    a: torch.Tensor,
+    core_attn_out: torch.Tensor,
+    layer_name: str,
+) -> None:
+    """Fake implementation for torch.compile."""
+    return
+
+
+if not hasattr(torch.ops.vllm, "gdn_attention_core"):
+    direct_register_custom_op(
+        op_name="gdn_attention_core",
+        op_func=gdn_attention_core,
+        mutates_args=["core_attn_out"],
+        fake_impl=gdn_attention_core_fake,
+    )
+
+
+@triton.jit
+def fused_gdn_gating_kernel(
+    g,
+    beta_output,
+    A_log,
+    a,
+    b,
+    dt_bias,
+    seq_len,
+    NUM_HEADS: tl.constexpr,
+    beta: tl.constexpr,
+    threshold: tl.constexpr,
+    BLK_HEADS: tl.constexpr,
+):
+    i_b, i_s, i_d = tl.program_id(0), tl.program_id(1), tl.program_id(2)
+    head_off = i_d * BLK_HEADS + tl.arange(0, BLK_HEADS)
+    off = i_b * seq_len * NUM_HEADS + i_s * NUM_HEADS + head_off
+    mask = head_off < NUM_HEADS
+    blk_A_log = tl.load(A_log + head_off, mask=mask)
+    blk_a = tl.load(a + off, mask=mask)
+    blk_b = tl.load(b + off, mask=mask)
+    blk_bias = tl.load(dt_bias + head_off, mask=mask)
+    # If the model is loaded in fp16, without the .float() here, A might be -inf
+    x = blk_a.to(tl.float32) + blk_bias.to(tl.float32)
+    softplus_x = tl.where(
+        beta * x <= threshold, (1 / beta) * tl.log(1 + tl.exp(beta * x)), x
+    )
+    blk_g = -tl.exp(blk_A_log.to(tl.float32)) * softplus_x
+    tl.store(g + off, blk_g.to(g.dtype.element_ty), mask=mask)
+    # compute beta_output = sigmoid(b)
+    blk_beta_output = tl.sigmoid(blk_b.to(tl.float32))
+    tl.store(
+        beta_output + off, blk_beta_output.to(beta_output.dtype.element_ty), mask=mask
+    )
+
+
+def fused_gdn_gating(
+    A_log: torch.Tensor,
+    a: torch.Tensor,
+    b: torch.Tensor,
+    dt_bias: torch.Tensor,
+    beta: float = 1.0,
+    threshold: float = 20.0,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """
+    Fused computation of g and beta for Gated Delta Net.
+    g = -self.A_log.float().exp() * F.softplus(a.float() + self.dt_bias)
+    beta_output = b.sigmoid()
+    TODO maybe use torch.compile to replace this triton kernel
+    """
+    batch, num_heads = a.shape
+    seq_len = 1
+    grid = (batch, seq_len, triton.cdiv(num_heads, 8))
+    g = torch.empty(1, batch, num_heads, dtype=torch.float32, device=a.device)
+    beta_output = torch.empty(1, batch, num_heads, dtype=b.dtype, device=b.device)
+    fused_gdn_gating_kernel[grid](
+        g,
+        beta_output,
+        A_log,
+        a,
+        b,
+        dt_bias,
+        seq_len,
+        num_heads,
+        beta,
+        threshold,
+        8,
+        num_warps=1,
+    )
+    return g, beta_output

@@ -5,6 +5,7 @@
 # SPDX-FileCopyrightText: Copyright contributors to the vLLM project
 
 import dataclasses
+from collections import Counter
 from collections.abc import Callable
 from contextlib import ExitStack
 from typing import Any, Optional
@@ -27,7 +28,6 @@ logger = init_logger(__name__)
 def weak_ref_tensors(tensor: Any) -> Any:
     if current_platform.device_type == "cuda":
         from vllm.utils.torch_utils import weak_ref_tensors
-
         return weak_ref_tensors(tensor)
     else:
         ### TODO: add csrc npu custom op
@@ -42,7 +42,6 @@ class Graph:
     else:
         raise NotImplementedError("not support graph")
 
-
 @dataclasses.dataclass
 class GraphEntry:
     batch_descriptor: BatchDescriptor
@@ -53,6 +52,11 @@ class GraphEntry:
     # during capture, and check if they are the same during replay
     input_addresses: Optional[list[int]] = None
 
+@dataclasses.dataclass
+class GraphOptions:
+    debug_log_enable: bool = True
+    gc_disable: bool = False
+    weak_ref_output: bool = True
 
 @dataclasses.dataclass
 class GraphOptions:
@@ -62,13 +66,11 @@ class GraphOptions:
 
 
 class GraphWrapper:
-    def __init__(
-        self,
-        runnable: Callable,
-        vllm_config: VllmConfig,
-        runtime_mode: CUDAGraphMode,
-        cudagraph_options: Optional[GraphOptions] = None,
-    ):
+    def __init__(self,
+                 runnable: Callable,
+                 vllm_config: VllmConfig,
+                 runtime_mode: CUDAGraphMode,
+                 cudagraph_options: Optional[GraphOptions] = None):
         self.runnable = runnable
         self.vllm_config = vllm_config
         self.runtime_mode = runtime_mode
@@ -170,13 +172,13 @@ class GraphWrapper:
                 # `output` is managed by pytorch's cudagraph pool
                 output = self.runnable(*args, **kwargs)
                 if self.graph_options.weak_ref_output:
-                    # by converting it to weak ref,
-                    # the original `output` will immediately be released
-                    # to save memory. It is only safe to do this for
-                    # the last graph in piecewise cuadgraph mode, because
-                    # the output of the last graph will not be used by
-                    # any other cuda graph.
-                    output = weak_ref_tensors(output)
+                        # by converting it to weak ref,
+                        # the original `output` will immediately be released
+                        # to save memory. It is only safe to do this for
+                        # the last graph in piecewise cuadgraph mode, because
+                        # the output of the last graph will not be used by
+                        # any other cuda graph.
+                        output = weak_ref_tensors(output)
 
             entry.output = weak_ref_tensors(output)
             entry.graph = graph

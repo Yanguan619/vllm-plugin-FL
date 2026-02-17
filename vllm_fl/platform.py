@@ -6,6 +6,7 @@
 
 import os
 from typing import TYPE_CHECKING, Optional, TypeVar
+from typing_extensions import ParamSpec
 
 import torch
 from typing_extensions import ParamSpec
@@ -77,7 +78,9 @@ class PlatformFL(Platform):
         pass
 
     @classmethod
-    def get_current_memory_usage(cls, device: Optional[torch.types.Device] = None) -> float:
+    def get_current_memory_usage(
+        cls, device: Optional[torch.types.Device] = None
+    ) -> float:
         cls.torch_device_fn.empty_cache()
         cls.torch_device_fn.reset_peak_memory_stats(device)
         return cls.torch_device_fn.max_memory_allocated(device)
@@ -207,9 +210,9 @@ class PlatformFL(Platform):
         if (cc := cls.get_device_capability()) and cc.major >= 8:
             try:
                 backend_class = AttentionBackendEnum.FLASH_ATTN.get_class()
-                if backend_class.supports_head_size(head_size) and backend_class.supports_dtype(
-                    dtype
-                ):
+                if backend_class.supports_head_size(
+                    head_size
+                ) and backend_class.supports_dtype(dtype):
                     return AttentionBackendEnum.FLASH_ATTN
             except ImportError:
                 pass
@@ -297,7 +300,9 @@ class PlatformFL(Platform):
             """
             query if the set of gpus are fully connected by nvlink (1 hop)
             """
-            handles = [pynvml.nvmlDeviceGetHandleByIndex(i) for i in physical_device_ids]
+            handles = [
+                pynvml.nvmlDeviceGetHandleByIndex(i) for i in physical_device_ids
+            ]
             for i, handle in enumerate(handles):
                 for j, peer_handle in enumerate(handles):
                     if i < j:
@@ -316,5 +321,5 @@ class PlatformFL(Platform):
                             )
                             return False
             return True
-        except Exception:
+        except:
             return False
