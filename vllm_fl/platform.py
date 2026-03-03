@@ -9,7 +9,6 @@ from typing import TYPE_CHECKING, Optional, TypeVar
 from typing_extensions import ParamSpec
 
 import torch
-from typing_extensions import ParamSpec
 
 # import custom ops, trigger op registration (CUDA only)
 try:

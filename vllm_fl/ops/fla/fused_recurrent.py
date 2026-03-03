@@ -9,12 +9,11 @@ if use_flaggems_op("fused_recurrent_gated_delta_rule_fwd"):
     from flag_gems.fused.FLA import fused_recurrent_gated_delta_rule_fwd
 else:
     from vllm.platforms import current_platform
+
     if current_platform.device_type == "npu":
         from vllm_fl.dispatch import resolve_op
 
-        fused_recurrent_gated_delta_rule_fwd = resolve_op(
-            "fused_recurrent_gated_delta_rule_fwd"
-        )
+        fused_recurrent_gated_delta_rule_fwd = resolve_op("fused_recurrent_gated_delta_rule_fwd")
     else:
         from vllm.model_executor.layers.fla.ops.fused_recurrent import (
             fused_recurrent_gated_delta_rule_fwd,

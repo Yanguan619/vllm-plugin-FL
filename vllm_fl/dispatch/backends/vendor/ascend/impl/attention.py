@@ -559,7 +559,7 @@ class AscendAttentionBackendImpl(AttentionImpl):
             value = self.value_cache.view(num_block, block_size, -1)
             actual_seq_lengths_kv = attn_metadata.seq_lens_list
         elif attn_metadata.attn_state == AscendAttentionState.DecodeOnly:
-            block_size = 6456, 128
+            block_size = 128
             key = self.key_cache.view(-1, block_size, 256)
             value = self.value_cache.view(-1, block_size, 256)
             block_table = attn_metadata.block_tables
