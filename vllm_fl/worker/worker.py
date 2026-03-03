@@ -52,10 +52,9 @@ from vllm.v1.utils import report_usage_stats
 from vllm.v1.worker.utils import is_residual_scattered_for_sp
 from vllm.v1.worker.worker_base import WorkerBase
 from vllm.v1.worker.workspace import init_workspace_manager
-
 import vllm_fl.envs as fl_envs
-from vllm_fl.dispatch.backends.vendor.ascend.impl.fused_moe.parallel_state import (
-    init_ascend_model_parallel,
+from vllm_fl.dispatch.backends.vendor.ascend.impl.fused_moe.ascend_config import (
+    init_ascend_config,
 )
 from vllm_fl.ops.custom_ops import register_oot_ops
 from vllm_fl.utils import get_flag_gems_whitelist_blacklist
@@ -372,7 +371,7 @@ class WorkerFL(WorkerBase):
             current_platform.dist_backend,
         )
 
-        init_ascend_model_parallel(self.parallel_config)
+        init_ascend_config(self.vllm_config)
         # Set random seed.
         set_random_seed(self.model_config.seed)
 

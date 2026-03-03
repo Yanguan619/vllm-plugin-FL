@@ -12,11 +12,9 @@ from typing import Any, Optional, Union
 
 import torch
 from vllm.attention.backends.utils import PAD_SLOT_ID
-from vllm.config import get_current_vllm_config
 
 from vllm_fl.dispatch.backends.base import Backend
 
-from .impl.fused_moe.ascend_config import init_ascend_config
 from .impl.triton_utils import init_device_properties_triton
 
 
@@ -32,8 +30,6 @@ class AscendBackend(Backend):
 
     def __init__(self) -> None:
         super().__init__()
-
-        init_ascend_config(get_current_vllm_config())
         init_device_properties_triton()
 
     @property
