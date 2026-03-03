@@ -30,7 +30,6 @@ from vllm.distributed import (
 )
 from vllm.forward_context import ForwardContext, get_forward_context
 from vllm.logger import init_logger
-from vllm.model_executor.layers.fused_moe import SharedFusedMoE
 from vllm.model_executor.layers.fused_moe.config import RoutingMethodType
 from vllm.model_executor.layers.layernorm import (
     GemmaRMSNorm as Qwen3NextRMSNorm,
@@ -48,10 +47,6 @@ from vllm.model_executor.layers.mamba.mamba_mixer2 import mamba_v2_sharded_weigh
 from vllm.model_executor.layers.mamba.mamba_utils import (
     MambaStateDtypeCalculator,
     MambaStateShapeCalculator,
-)
-from vllm.model_executor.layers.mamba.ops.causal_conv1d import (
-    causal_conv1d_fn,
-    causal_conv1d_update,
 )
 from vllm.model_executor.layers.quantization import QuantizationConfig
 from vllm.model_executor.layers.rotary_embedding import get_rope
@@ -71,7 +66,6 @@ from vllm.model_executor.models.interfaces import (
     SupportsPP,
 )
 from vllm.model_executor.models.qwen2_moe import Qwen2MoeMLP as Qwen3NextMLP
-from vllm.model_executor.models.qwen3_next import fused_gdn_gating
 from vllm.model_executor.models.utils import (
     AutoWeightsLoader,
     PPMissingLayer,
@@ -86,25 +80,26 @@ from vllm.model_executor.utils import set_weight_attrs
 from vllm.platforms import current_platform
 from vllm.sequence import IntermediateTensors
 from vllm.transformers_utils.configs import Qwen3NextConfig
-from vllm.triton_utils import triton
+from vllm.triton_utils import tl, triton
 from vllm.utils.torch_utils import direct_register_custom_op
 from vllm.v1.attention.backends.gdn_attn import GDNAttentionMetadata
 
 from vllm_fl.dispatch import resolve_op
 from vllm_fl.ops.fla import ChunkGatedDeltaRuleOp, FusedRecurrentGatedDeltaRuleOp
 
-if current_platform.device_type != "npu":
-    from vllm.model_executor.layers.fused_moe import SharedFusedMoE
-else:
+if current_platform.device_type == "npu":
     _ascend_fused_moe = importlib.import_module(
         "vllm_fl.dispatch.backends.vendor.ascend.impl.fused_moe"
     )
     SharedFusedMoE = _ascend_fused_moe.AscendSharedFusedMoE
-
-
-causal_conv1d_fn = resolve_op("causal_conv1d_fn")
-causal_conv1d_update = resolve_op("causal_conv1d_update")
-
+    causal_conv1d_fn = resolve_op("causal_conv1d_fn")
+    causal_conv1d_update = resolve_op("causal_conv1d_update")
+else:
+    from vllm.model_executor.layers.fused_moe import SharedFusedMoE
+    from vllm.model_executor.layers.mamba.ops.causal_conv1d import (
+        causal_conv1d_fn,
+        causal_conv1d_update,
+    )
 
 logger = init_logger(__name__)
 

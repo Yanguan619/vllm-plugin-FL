@@ -1,12 +1,10 @@
 # adapted from vllm/model_executor/layers/mamba/ops/causal_conv1d.py
 # Adapted from https://github.com/vllm-project/vllm/blob/main/vllm/model_executor/layers/mamba/ops/causal_conv1d.py
+# Copyright (c) 2026 BAAI. All rights reserved.
+# Adapted from https://github.com/vllm-project/xxxxx
+# Below is the original copyright:
 # SPDX-License-Identifier: Apache-2.0
-
-# Copyright (c) 2024, Tri Dao.
-# Adapted from https://github.com/Dao-AILab/causal-conv1d/blob/main/causal_conv1d/causal_conv1d_interface.py
-# and https://github.com/vllm-project/vllm/blob/main/vllm/model_executor/layers/mamba/ops/causal_conv1d.py
-# mypy: ignore-errors
-
+# SPDX-FileCopyrightText: Copyright contributors to the vLLM project
 from typing import Any, Optional
 
 import torch

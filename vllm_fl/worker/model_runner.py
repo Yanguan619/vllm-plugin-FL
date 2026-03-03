@@ -1580,14 +1580,6 @@ class ModelRunnerFL(
         else:
             max_seq_len = self.seq_lens.np[:num_reqs].max().item()
 
-        if for_cudagraph_capture:
-            # For some attention backends (e.g. FA) with sliding window models we need
-            # to make sure the backend see a max_seq_len that is larger to the sliding
-            # window size when capturing to make sure the correct kernel is selected.
-            max_seq_len = self.max_model_len
-        else:
-            max_seq_len = self.seq_lens.np[:num_reqs].max().item()
-
         if use_spec_decode:
             self.num_accepted_tokens.np[:num_reqs] = (
                 self.input_batch.num_accepted_tokens_cpu[:num_reqs]
