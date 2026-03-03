@@ -18,8 +18,18 @@ def __getattr__(name):
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
+def _patch_transformers_compat():
+    """Patch transformers compatibility for ALLOWED_LAYER_TYPES."""
+    import transformers.configuration_utils as cfg
+    if not hasattr(cfg, "ALLOWED_LAYER_TYPES"):
+        cfg.ALLOWED_LAYER_TYPES = getattr(
+            cfg, "ALLOWED_ATTENTION_LAYER_TYPES", ()
+        )
+
+
 def register():
     """Register the FL platform."""
+    _patch_transformers_compat()
 
     multiproc_method = os.environ.get("VLLM_WORKER_MULTIPROC_METHOD")
     if multiproc_method is None:
@@ -32,6 +42,14 @@ def register_model():
     """Register the FL model."""
     from vllm import ModelRegistry
 
+    # Register Qwen3.5 MoE config
+    try:
+        from vllm.transformers_utils.config import _CONFIG_REGISTRY
+        from vllm_fl.configs.qwen3_5_moe import Qwen3_5MoeConfig
+        _CONFIG_REGISTRY["qwen3_5_moe"] = Qwen3_5MoeConfig
+    except Exception as e:
+        logger.error(f"Register Qwen3.5 MoE config error: {str(e)}")
+
     # Register Qwen3Next model
     try:
         ModelRegistry.register_model(
@@ -40,6 +58,15 @@ def register_model():
         )
     except Exception as e:
         logger.error(f"Register Qwen3Next model error: {str(e)}")
+
+    # Register Qwen3.5 MoE model
+    try:
+        ModelRegistry.register_model(
+            "Qwen3_5MoeForConditionalGeneration",
+            "vllm_fl.models.qwen3_5:Qwen3_5MoeForConditionalGeneration"
+        )
+    except Exception as e:
+        logger.error(f"Register Qwen3.5 MoE model error: {str(e)}")
 
     # Register MiniCPMO model
     try:
@@ -58,3 +85,15 @@ def register_model():
         )
     except Exception as e:
         logger.error(f"Register KimiK25 model error: {str(e)}")
+
+    # Register GLM-5 (GlmMoeDsa) model
+    try:
+        from vllm_fl.models.glm_moe_dsa import patch_is_deepseek_mla
+        patch_is_deepseek_mla()
+
+        ModelRegistry.register_model(
+            "GlmMoeDsaForCausalLM",
+            "vllm_fl.models.glm_moe_dsa:GlmMoeDsaForCausalLM"
+        )
+    except Exception as e:
+        logger.error(f"Register GlmMoeDsa model error: {str(e)}")

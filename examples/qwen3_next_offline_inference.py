@@ -6,8 +6,9 @@
 
 import os
 
-os.environ["VLLM_ALLOW_LONG_MAX_MODEL_LEN"] = "1"
 from vllm import LLM, SamplingParams
+
+os.environ["VLLM_ALLOW_LONG_MAX_MODEL_LEN"] = "1"
 
 if __name__ == "__main__":
     prompts = [
@@ -18,7 +19,9 @@ if __name__ == "__main__":
     sampling_params = SamplingParams(max_tokens=10, temperature=0.0)
     # Create an LLM.
     llm = LLM(
-        model="Qwen/Qwen3-Next-80B-A3B-Instruct", tensor_parallel_size=4, max_model_len=262144
+        model="Qwen/Qwen3-Next-80B-A3B-Instruct",
+        tensor_parallel_size=4,
+        max_model_len=262144,
     )
 
     # Generate texts from the prompts.
