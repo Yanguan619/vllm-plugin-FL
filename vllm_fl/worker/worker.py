@@ -54,9 +54,6 @@ from vllm.v1.worker.worker_base import WorkerBase
 from vllm.v1.worker.workspace import init_workspace_manager
 
 import vllm_fl.envs as fl_envs
-from vllm_fl.dispatch.backends.vendor.ascend.impl.fused_moe.ascend_config import (
-    init_ascend_config,
-)
 from vllm_fl.dispatch.backends.vendor.ascend.impl.fused_moe.parallel_state import (
     init_ascend_model_parallel,
 )
@@ -200,7 +197,6 @@ class WorkerFL(WorkerBase):
             distributed_init_method=distributed_init_method,
             is_driver_worker=is_driver_worker,
         )
-        init_ascend_config(vllm_config)
         if self.model_config.trust_remote_code:
             # note: lazy import to avoid importing torch before initializing
             from vllm.utils.import_utils import init_cached_hf_modules
