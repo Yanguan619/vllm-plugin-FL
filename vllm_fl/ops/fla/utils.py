@@ -1,3 +1,4 @@
+# Copyright (c) 2026 BAAI. All rights reserved.
 import contextlib
 import functools
 from collections.abc import Callable
