@@ -13,11 +13,15 @@ from torch.distributed import ProcessGroup, ReduceOp
 
 from vllm.distributed.utils import StatelessProcessGroup
 from vllm.logger import init_logger
-from vllm.utils import current_stream
+from vllm.utils.torch_utils import current_stream
 
 import os
 import sys
-sys.path.append(os.getenv('FLAGCX_PATH'))
+
+_flagcx_path = os.getenv('FLAGCX_PATH')
+if _flagcx_path and os.path.isdir(_flagcx_path):
+    sys.path.append(_flagcx_path)
+
 from plugin.interservice.flagcx_wrapper import (
     FLAGCXLibrary,
     buffer_type,
