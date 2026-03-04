@@ -18,6 +18,9 @@ except (ImportError, OSError):
 
 from vllm.attention.backends.registry import AttentionBackendEnum
 from vllm.logger import init_logger
+
+from vllm.attention.backends.registry import AttentionBackendEnum
+from vllm.logger import init_logger
 from vllm.platforms import Platform, PlatformEnum
 from vllm.platforms.interface import DeviceCapability
 
@@ -50,7 +53,7 @@ class PlatformFL(Platform):
     dispatch_key = device_info.dispatch_key
     torch_device_fn = device_info.torch_device_fn
     vendor_name = device_info.vendor_name
-    ray_device_key: str = "flagos"
+    ray_device_key: str = "GPU"
     dist_backend: str = (
         "flagcx" if "FLAGCX_PATH" in os.environ else dist_backend_dict.get(device_name, "nccl")
     )
