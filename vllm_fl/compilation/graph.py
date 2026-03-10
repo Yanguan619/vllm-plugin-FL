@@ -58,6 +58,7 @@ class GraphOptions:
     gc_disable: bool = False
     weak_ref_output: bool = True
 
+
 class GraphWrapper:
     def __init__(self,
                  runnable: Callable,

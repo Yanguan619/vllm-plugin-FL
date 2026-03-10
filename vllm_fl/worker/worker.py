@@ -66,8 +66,8 @@ from vllm.v1.worker.worker_base import WorkerBase
 from vllm.v1.worker.workspace import init_workspace_manager
 import vllm_fl.envs as fl_envs
 
-from vllm_fl.utils import get_flag_gems_whitelist_blacklist
 from vllm_fl.ops.custom_ops import register_oot_ops
+from vllm_fl.utils import get_flag_gems_whitelist_blacklist
 
 logger = init_logger(__name__)
 
@@ -390,7 +390,6 @@ class WorkerFL(WorkerBase):
             )
             init_ascend_config(self.vllm_config)
             init_device_properties_triton()
-
         # Set random seed.
         set_random_seed(self.model_config.seed)
 

@@ -18,9 +18,6 @@ except (ImportError, OSError):
 
 from vllm.attention.backends.registry import AttentionBackendEnum
 from vllm.logger import init_logger
-
-from vllm.attention.backends.registry import AttentionBackendEnum
-from vllm.logger import init_logger
 from vllm.platforms import Platform, PlatformEnum
 from vllm.platforms.interface import DeviceCapability
 
@@ -179,12 +176,14 @@ class PlatformFL(Platform):
         from vllm_fl.dispatch import call_op
 
         use_mla = attn_selector_config.use_mla
+        use_sparse = attn_selector_config.use_sparse
 
-        backend_path = call_op("attention_backend", use_mla=use_mla)
+        backend_path = call_op("attention_backend", use_mla=use_mla, use_sparse=use_sparse)
 
         logger.info_once(
-            "Using attention backend via dispatch (use_mla=%s): %s",
+            "Using attention backend via dispatch (use_mla=%s, use_sparse=%s): %s",
             use_mla,
+            use_sparse,
             backend_path,
             scope="local",
         )
@@ -287,6 +286,12 @@ class PlatformFL(Platform):
         if cls.dist_backend == "flagcx":
             return False
         return True
+
+    @classmethod
+    def pre_register_and_update(cls, parser = None) -> None:
+        if cls.device_name == "npu":
+            import vllm_fl.dispatch.backends.vendor.ascend
+
 
     @classmethod
     def get_device_capability(cls, device_id: int = 0) -> DeviceCapability:

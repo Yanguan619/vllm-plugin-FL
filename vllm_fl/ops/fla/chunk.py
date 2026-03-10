@@ -12,13 +12,7 @@ from vllm_fl.utils import use_flaggems_op
 if use_flaggems_op("chunk_gated_delta_rule_fwd"):
     from flag_gems.fused.FLA import chunk_gated_delta_rule_fwd
 else:
-    from vllm.platforms import current_platform
-    if current_platform.device_type == "npu":
-        from vllm_fl.dispatch import resolve_op
-
-        chunk_gated_delta_rule_fwd = resolve_op("chunk_gated_delta_rule_fwd")
-    else:
-        from vllm.model_executor.layers.fla.ops.chunk import chunk_gated_delta_rule_fwd
+    from vllm.model_executor.layers.fla.ops.chunk import chunk_gated_delta_rule_fwd
 
 
 class ChunkGatedDeltaRuleFunction(torch.autograd.Function):

@@ -15,6 +15,8 @@ from vllm.attention.backends.utils import PAD_SLOT_ID
 
 from vllm_fl.dispatch.backends.base import Backend
 
+from .impl.triton_utils import init_device_properties_triton
+
 
 class AscendBackend(Backend):
     """
@@ -142,7 +144,7 @@ class AscendBackend(Backend):
             inplace=inplace,
         )
 
-    def attention_backend(self, use_mla: bool = False) -> str:
+    def attention_backend(self, use_mla: bool = False, use_sparse: bool = False) -> str:
         """
         Get the attention backend class path for Ascend NPU.
 
@@ -155,11 +157,14 @@ class AscendBackend(Backend):
 
         Args:
             use_mla: Whether to use Multi-head Latent Attention (MLA)
+            use_sparse: Whether to use Deepseek Sparse Attention (DSA)
 
         Returns:
             Fully qualified class path string
         """
         if use_mla:
+            if use_sparse:
+                raise NotImplementedError("MLA with sparse attention is not implemented for Ascend yet.")
             return "vllm_fl.dispatch.backends.vendor.ascend.impl.attention.AscendMLABackend"
         return "vllm_fl.dispatch.backends.vendor.ascend.impl.attention.AscendAttentionBackend"
 

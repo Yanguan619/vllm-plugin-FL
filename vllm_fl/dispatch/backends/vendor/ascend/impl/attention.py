@@ -773,10 +773,12 @@ class AscendAttentionBackendImpl(AttentionImpl):
             return output.fill_(0)
 
         # Reshape and cache KV
-        key = key.contiguous()
-        value = value.contiguous()
-        kv_cache = [i.contiguous() for i in kv_cache]
-        key, value = self.reshape_and_cache(key, value, kv_cache, attn_metadata)
+        if attn_metadata != AscendAttentionState.DecodeOnly:
+            kv_cache = [i.contiguous() for i in kv_cache]
+        if key is not None and value is not None:
+            key = key.contiguous()
+            value = value.contiguous()
+            key, value = self.reshape_and_cache(key, value, kv_cache, attn_metadata)
 
         # Handle pooling model branch (encoder attention)
         if attn_metadata.model_runner_type == "pooling":
