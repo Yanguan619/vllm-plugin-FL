@@ -39,20 +39,3 @@ def rms_norm_ascend(
 
     x, _ = torch_npu.npu_rms_norm(x, weight, epsilon)
     return x
-
-
-def gemma_rms_norm_ascend(
-    x: torch.Tensor,
-    residual: Optional[torch.Tensor],
-    weight: torch.Tensor,
-    epsilon: float,
-):
-    import torch_npu
-
-    if residual is not None:
-        x, _, residual = torch_npu.npu_add_rms_norm(x, residual, 1.0 + weight, epsilon)
-
-        return x, residual
-
-    x, _ = torch_npu.npu_rms_norm(x, 1.0 + weight, epsilon)
-    return x

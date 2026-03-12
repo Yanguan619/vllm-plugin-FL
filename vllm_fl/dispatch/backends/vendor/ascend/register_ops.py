@@ -40,14 +40,6 @@ def register_builtins(registry: OpRegistry) -> None:
     impls = [
         # Activation
         OpImpl(
-            op_name="quick_gelu",
-            impl_id="vendor.ascend",
-            kind=BackendImplKind.VENDOR,
-            fn=_bind_is_available(backend.quick_gelu, is_avail),
-            vendor="ascend",
-            priority=BackendPriority.VENDOR,
-        ),
-        OpImpl(
             op_name="silu_and_mul",
             impl_id="vendor.ascend",
             kind=BackendImplKind.VENDOR,
@@ -56,14 +48,6 @@ def register_builtins(registry: OpRegistry) -> None:
             priority=BackendPriority.VENDOR,
         ),
         # Normalization
-        OpImpl(
-            op_name="gemma_rms_norm",
-            impl_id="vendor.ascend",
-            kind=BackendImplKind.VENDOR,
-            fn=_bind_is_available(backend.gemma_rms_norm_ascend, is_avail),
-            vendor="ascend",
-            priority=BackendPriority.VENDOR,
-        ),
         OpImpl(
             op_name="rms_norm",
             impl_id="vendor.ascend",
@@ -87,38 +71,6 @@ def register_builtins(registry: OpRegistry) -> None:
             impl_id="vendor.ascend",
             kind=BackendImplKind.VENDOR,
             fn=_bind_is_available(backend.attention_backend, is_avail),
-            vendor="ascend",
-            priority=BackendPriority.VENDOR,
-        ),
-        OpImpl(
-            op_name="chunk_gated_delta_rule_fwd",
-            impl_id="vendor.ascend",
-            kind=BackendImplKind.VENDOR,
-            fn=_bind_is_available(backend.chunk_gated_delta_rule_fwd, is_avail),
-            vendor="ascend",
-            priority=BackendPriority.VENDOR,
-        ),
-        OpImpl(
-            op_name="fused_recurrent_gated_delta_rule_fwd",
-            impl_id="vendor.ascend",
-            kind=BackendImplKind.VENDOR,
-            fn=_bind_is_available(backend.fused_recurrent_gated_delta_rule_fwd, is_avail),
-            vendor="ascend",
-            priority=BackendPriority.VENDOR,
-        ),
-        OpImpl(
-            op_name="causal_conv1d_fn",
-            impl_id="vendor.ascend",
-            kind=BackendImplKind.VENDOR,
-            fn=_bind_is_available(backend.causal_conv1d_fn, is_avail),
-            vendor="ascend",
-            priority=BackendPriority.VENDOR,
-        ),
-        OpImpl(
-            op_name="causal_conv1d_update",
-            impl_id="vendor.ascend",
-            kind=BackendImplKind.VENDOR,
-            fn=_bind_is_available(backend.causal_conv1d_update, is_avail),
             vendor="ascend",
             priority=BackendPriority.VENDOR,
         ),

@@ -1,9 +1,9 @@
-# Adapt from https://github.com/vllm-project/vllm/blob/main/vllm/model_executor/models/qwen3_next.py
 # Copyright (c) 2026 BAAI. All rights reserved.
-# Adapted from https://github.com/vllm-project/xxxxx
-# Below is the original copyright:
+# Adapted from https://github.com/vllm-project/vllm-ascend/blob/v0.13.0/vllm_ascend/ops/triton/fused_gdn_gating.py
+# Adapt from https://github.com/vllm-project/vllm/blob/main/vllm/model_executor/models/qwen3_next.py
 # SPDX-License-Identifier: Apache-2.0
 # SPDX-FileCopyrightText: Copyright contributors to the vLLM project
+
 import torch
 from vllm.triton_utils import tl, triton
 

@@ -1,3 +1,6 @@
+# Copyright (c) 2026 BAAI. All rights reserved.
+# Adapted from https://github.com/vllm-project/vllm-ascend/blob/v0.13.0/vllm_ascend/ops/triton/triton_utils.py
+
 from typing import Any, Dict
 
 import torch

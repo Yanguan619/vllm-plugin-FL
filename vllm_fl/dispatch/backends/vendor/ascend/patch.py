@@ -1,4 +1,7 @@
+# Copyright (c) 2026 BAAI. All rights reserved.
+
 import logging
+
 import vllm
 
 logger = logging.getLogger(__name__)

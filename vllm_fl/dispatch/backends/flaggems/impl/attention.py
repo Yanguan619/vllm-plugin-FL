@@ -246,21 +246,7 @@ class AttentionFLMetadataBuilder(AttentionMetadataBuilder[AttentionFLMetadata]):
         self.block_size = kv_cache_spec.block_size
 
         self.max_num_splits = 0  # No upper bound on the number of splits.
-        self.aot_schedule = False  # get_flash_attn_version() == 3
-
-        try:
-            from vllm.distributed.parallel_state import get_dcp_group
-
-            self.dcp_world_size = get_dcp_group().world_size
-            self.dcp_rank = get_dcp_group().rank_in_group
-        except AssertionError:
-            # DCP might not be initialized in testing
-            self.dcp_world_size = 1
-            self.dcp_rank = 0
-
-        self.cp_kv_cache_interleave_size = (
-            self.parallel_config.cp_kv_cache_interleave_size
-        )
+        self.aot_schedule = False  #get_flash_attn_version() == 3
 
         try:
             from vllm.distributed.parallel_state import get_dcp_group

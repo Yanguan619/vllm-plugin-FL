@@ -9,13 +9,6 @@ from __future__ import annotations
 import torch
 
 
-def quick_gelu_ascend(x: torch.tensor) -> torch.Tensor:
-    import torch_npu
-
-    out = torch_npu.npu_fast_gelu(x)
-    return out
-
-
 def silu_and_mul_ascend(obj, x: torch.Tensor) -> torch.Tensor:
     """
     SiLU activation followed by element-wise multiplication using Ascend NPU.

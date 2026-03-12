@@ -1,3 +1,5 @@
+# Copyright (c) 2026 BAAI. All rights reserved.
+# Adapted from https://github.com/vllm-project/vllm-ascend/blob/v0.13.0/vllm_ascend/ops/vocab_parallel_embedding.py
 #
 # Copyright (c) 2025 Huawei Technologies Co., Ltd. All Rights Reserved.
 # This file is a part of the vllm-ascend project.
