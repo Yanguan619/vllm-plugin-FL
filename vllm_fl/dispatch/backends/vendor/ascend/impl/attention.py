@@ -353,7 +353,8 @@ class AscendAttentionMetadataBuilder:
             # For simplicity, use ChunkedPrefill as default
             return AscendAttentionState.PrefillNoCache
         else:
-            # Mixed decode and prefill
+            return AscendAttentionState.DecodeOnly
+            # TODO Mixed decode and prefill
             return AscendAttentionState.ChunkedPrefill
 
     def _split_decodes_and_prefills(self, common_attn_metadata):
