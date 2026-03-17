@@ -46,7 +46,6 @@ In theory, vllm-plugin-FL can support all models available in vLLM, as long as n
     2.2 install
     ```sh
     cd vllm-plugin-FL
-    pip install -r requirements.txt
     pip install --no-build-isolation .
     # or editble install
     pip install --no-build-isolation -e .

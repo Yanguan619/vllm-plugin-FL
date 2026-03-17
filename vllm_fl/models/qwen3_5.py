@@ -144,7 +144,6 @@ class Qwen3_5GatedDeltaNet(Qwen3NextGatedDeltaNet):
         from vllm.model_executor.utils import set_weight_attrs
         from vllm.platforms import current_platform
         from transformers.activations import ACT2FN
-        from vllm_fl.ops.fla.chunk import ChunkGatedDeltaRuleOp
 
         self.tp_size = get_tensor_model_parallel_world_size()
         self.tp_rank = get_tensor_model_parallel_rank()
@@ -250,7 +249,6 @@ class Qwen3_5GatedDeltaNet(Qwen3NextGatedDeltaNet):
             raise ValueError(f"Duplicate layer name: {prefix}")
         compilation_config.static_forward_context[prefix] = self
 
-        self.chunk_gated_delta_rule = ChunkGatedDeltaRuleOp()
 
     def forward(
         self,

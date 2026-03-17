@@ -11,7 +11,7 @@ import pytest
 
 from vllm import LLM, SamplingParams
 
-MODEL_PATH = "/data/models/Qwen/Qwen3-Next-80B-A3B-Instruct"
+MODEL_PATH = "/data/models/Qwen/Qwen3.5-35B-A3B"
 pytestmark = pytest.mark.skipif(
     not os.path.exists(MODEL_PATH), reason=f"Model not found: {MODEL_PATH}"
 )
@@ -24,9 +24,8 @@ def llm_instance():
         max_num_batched_tokens=16384,
         max_num_seqs=1024,
         gpu_memory_utilization=0.85,
-        tensor_parallel_size=8,
+        tensor_parallel_size=4,
         trust_remote_code=True,
-        enforce_eager=True,
     )
 
 
