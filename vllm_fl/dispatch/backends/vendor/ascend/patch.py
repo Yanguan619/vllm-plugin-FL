@@ -17,6 +17,7 @@ def apply_ascend_patches():
     patch_causal_conv1d()
     patch_fla_ops()
     patch_op_cls()
+    patch_fused_moe()
 
 def patch_mamba_config():
     """Patch HybridAttentionMambaModelConfig for Ascend."""
@@ -43,6 +44,19 @@ def patch_causal_conv1d():
         logger.info("Patched causal_conv1d ops for Ascend")
     except Exception as e:
         logger.warning("Failed to patch causal_conv1d ops: %s", e)
+
+def patch_fused_moe():
+    try:
+        import vllm_fl.ops.fused_moe.fused_moe as _fused_moe_lib
+
+        from .impl.fused_moe.fused_moe import fused_experts_impl
+        from .impl.fused_moe.topk_softmax import vllm_topk_softmax
+
+        _fused_moe_lib.fused_experts_impl = fused_experts_impl
+        _fused_moe_lib.vllm_topk_softmax = vllm_topk_softmax
+        logger.info("Patched fused_moe ops for Ascend")
+    except Exception as e:
+        logger.warning("Failed to patch fused_moe ops: %s", e)
 
 def patch_fla_ops():
     """Patch FLA ops and fused_gdn_gating with Ascend implementations."""
@@ -92,11 +106,9 @@ def patch_op_cls():
     try:
         from vllm.model_executor.custom_op import CustomOp
 
-        from .impl.fused_moe import AscendSharedFusedMoE
         from .impl.mm_encoder_attention import AscendMMEncoderAttention
         from .impl.vocab_parallel_embedding import AscendVocabParallelEmbedding
         REGISTERED_ASCEND_OPS = {
-            "SharedFusedMoE": AscendSharedFusedMoE,
             "VocabParallelEmbedding": AscendVocabParallelEmbedding,
             "MMEncoderAttention": AscendMMEncoderAttention,
             }
@@ -105,3 +117,26 @@ def patch_op_cls():
         logger.info("Patched MMEncoderAttention for NPU (matmul attention)")
     except Exception as e:
         logger.warning("Failed to patch MMEncoderAttention: %s", e)
+
+def refresh_block_size(vllm_config):
+    """
+    Refresh the block size in cache config.
+    """
+    cache_config = vllm_config.cache_config
+    scheduler_config = vllm_config.scheduler_config
+    model_config = vllm_config.model_config
+
+    if not cache_config:
+        return
+
+    if cache_config.block_size is None:
+        cache_config.block_size = 128
+
+    if not scheduler_config or not model_config:
+        return
+
+    # TODO(MengqingCao): Remove the model_type check, after resolving the hidden error in get_kv_cache_groups.
+    if model_config.hf_text_config.model_type != "qwen3_next" and cache_config.block_size != 128:
+        if cache_config.enable_prefix_caching or scheduler_config.enable_chunked_prefill:
+            logger.info("Block size is set to 128 if prefix cache or chunked prefill is enabled.")
+            cache_config.block_size = 128
