@@ -559,15 +559,16 @@ class AscendAttentionBackendImpl(AttentionImpl):
             value = self.value_cache.view(num_block, block_size, -1)
             actual_seq_lengths_kv = attn_metadata.seq_lens_list
         elif attn_metadata.attn_state == AscendAttentionState.DecodeOnly:
-            key = self.key_cache.view(-1, block_size, 256)
-            value = self.value_cache.view(-1, block_size, 256)
+            num_block, block_size, _, _ = self.key_cache.shape
+            key = self.key_cache.view(num_block, block_size, -1)
+            value = self.value_cache.view(num_block, block_size, -1)
             block_table = attn_metadata.block_tables
             actual_seq_lengths_kv = attn_metadata.seq_lens_list
         else:
             # ChunkedPrefill
-            # num_block, block_size, _, _ = self.key_cache.shape
-            key = self.key_cache.view(-1, block_size, 256)
-            value = self.value_cache.view(-1, block_size, 256)
+            num_block, block_size, _, _ = self.key_cache.shape
+            key = self.key_cache.view(num_block, block_size, -1)
+            value = self.value_cache.view(num_block, block_size, -1)
             block_table = attn_metadata.block_tables
             actual_seq_lengths_kv = attn_metadata.seq_lens_list
 
