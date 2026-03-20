@@ -132,6 +132,7 @@ class PlatformFL(Platform):
 
             refresh_block_size(vllm_config)
 
+        print(f'==========={vllm_config.cache_config.block_size=}===========')
         # TODO(lucas): handle this more gracefully
         # Note: model_config may be None during testing
         # Note: block_size is initialized in

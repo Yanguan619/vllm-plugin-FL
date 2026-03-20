@@ -3,10 +3,11 @@
 """
 Ascend (Huawei) backend for vllm-plugin-FL dispatch.
 """
+import vllm
 
 from .ascend import AscendBackend
-from .patch import patch_mamba_config
+from .patches.platform.patch_mamba_config import verify_and_update_config
 
-patch_mamba_config()
+vllm.model_executor.models.config.HybridAttentionMambaModelConfig.verify_and_update_config = verify_and_update_config
 
 __all__ = ["AscendBackend"]

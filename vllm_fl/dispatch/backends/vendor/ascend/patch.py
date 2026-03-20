@@ -18,13 +18,6 @@ def apply_ascend_patches():
     patch_fla_ops()
     patch_op_cls()
 
-def patch_mamba_config():
-    """Patch HybridAttentionMambaModelConfig for Ascend."""
-    from .patches.patch_mamba_config import verify_and_update_config
-
-    vllm.model_executor.models.config.HybridAttentionMambaModelConfig.verify_and_update_config = verify_and_update_config
-    logger.info("Patched HybridAttentionMambaModelConfig for Ascend")
-
 def patch_causal_conv1d():
     """Patch causal_conv1d ops with Ascend implementations."""
     try:
