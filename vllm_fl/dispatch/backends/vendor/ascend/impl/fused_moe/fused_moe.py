@@ -66,11 +66,11 @@ def _torch_fused_experts_impl(
         # Activation (pure PyTorch to avoid Triton kernel issues on NPU)
         if activation == "silu":
             d = gate_up.shape[-1] // 2
-            gate_up = torch_npu.npu_silu(gate_up[..., :d]) * gate_up[..., d:]
+            gate_up = F.silu(gate_up[..., :d]) * gate_up[..., d:]
         elif activation == "gelu":
             gate_up = torch_npu.npu_gelu_mul(gate_up)
         elif activation == "silu_no_mul":
-            gate_up = torch_npu.npu_silu(gate_up)
+            gate_up = F.silu(gate_up)
         elif activation == "gelu_no_mul":
             gate_up = torch_npu.npu_gelu(gate_up)
         else:
