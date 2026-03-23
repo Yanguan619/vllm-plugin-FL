@@ -67,9 +67,9 @@ def patch_fla_ops():
         import vllm.model_executor.layers.fla.ops.layernorm_guard as _fla_layernorm_lib
         import vllm.model_executor.models.qwen3_next as _qwen3_next_lib
 
-        # from vllm_fl.dispatch.backends.vendor.ascend.impl.fla.chunk import (
-        #     chunk_gated_delta_rule as ascend_chunk_gated_delta_rule,
-        # )
+        from vllm_fl.dispatch.backends.vendor.ascend.impl.fla.chunk import (
+            chunk_gated_delta_rule as ascend_chunk_gated_delta_rule,
+        )
         # from vllm_fl.dispatch.backends.vendor.ascend.impl.fla.fused_recurrent import (
         #     fused_recurrent_gated_delta_rule as ascend_fused_recurrent,
         # )
@@ -79,18 +79,19 @@ def patch_fla_ops():
         # from vllm_fl.dispatch.backends.vendor.ascend.impl.fla.layernorm_guard import (
         #     LayerNormFn as ascend_LayerNormFn,
         # )
-        from flag_gems.runtime.backend._ascend.fla import chunk_gated_delta_rule, fused_recurrent_gated_delta_rule_fwd
+        from flag_gems.runtime.backend._ascend.fla import chunk_gated_delta_rule_fwd, fused_recurrent_gated_delta_rule_fwd
         from flag_gems.runtime.backend._ascend.fla.layernorm_guard import (
             LayerNormFn as ascend_LayerNormFn,
         )
 
-        _fla_ops_lib.chunk_gated_delta_rule = chunk_gated_delta_rule
-        _fla_chunk_lib.chunk_gated_delta_rule = chunk_gated_delta_rule
+        _fla_ops_lib.chunk_gated_delta_rule_fwd = chunk_gated_delta_rule_fwd
+        _fla_chunk_lib.chunk_gated_delta_rule_fwd = chunk_gated_delta_rule_fwd
+        _fla_chunk_lib.chunk_gated_delta_rule =ascend_chunk_gated_delta_rule
         # _fla_ops_lib.fused_recurrent_gated_delta_rule = fused_recurrent_gated_delta_rule
         # _fla_recurrent_lib.fused_recurrent_gated_delta_rule = fused_recurrent_gated_delta_rule
         _fla_recurrent_lib.fused_recurrent_gated_delta_rule_fwd = fused_recurrent_gated_delta_rule_fwd
         _fla_layernorm_lib.LayerNormFn = ascend_LayerNormFn
-        _qwen3_next_lib.chunk_gated_delta_rule = chunk_gated_delta_rule
+        _qwen3_next_lib.chunk_gated_delta_rule_fwd = chunk_gated_delta_rule_fwd
         # _qwen3_next_lib.fused_recurrent_gated_delta_rule = fused_recurrent_gated_delta_rule
         logger.info("Patched FLA ops + fused_gdn_gating for Ascend")
     except Exception as e:
