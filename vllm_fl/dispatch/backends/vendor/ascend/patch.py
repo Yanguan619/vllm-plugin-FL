@@ -80,13 +80,16 @@ def patch_fla_ops():
         #     LayerNormFn as ascend_LayerNormFn,
         # )
         from flag_gems.runtime.backend._ascend.fla import chunk_gated_delta_rule, fused_recurrent_gated_delta_rule_fwd
+        from flag_gems.runtime.backend._ascend.fla.layernorm_guard import (
+            LayerNormFn as ascend_LayerNormFn,
+        )
 
         _fla_ops_lib.chunk_gated_delta_rule = chunk_gated_delta_rule
         _fla_chunk_lib.chunk_gated_delta_rule = chunk_gated_delta_rule
-        _fla_ops_lib.fused_recurrent_gated_delta_rule = fused_recurrent_gated_delta_rule
-        _fla_recurrent_lib.fused_recurrent_gated_delta_rule = fused_recurrent_gated_delta_rule
+        # _fla_ops_lib.fused_recurrent_gated_delta_rule = fused_recurrent_gated_delta_rule
+        # _fla_recurrent_lib.fused_recurrent_gated_delta_rule = fused_recurrent_gated_delta_rule
         _fla_recurrent_lib.fused_recurrent_gated_delta_rule_fwd = fused_recurrent_gated_delta_rule_fwd
-        # _fla_layernorm_lib.LayerNormFn = ascend_LayerNormFn
+        _fla_layernorm_lib.LayerNormFn = ascend_LayerNormFn
         _qwen3_next_lib.chunk_gated_delta_rule = chunk_gated_delta_rule
         # _qwen3_next_lib.fused_recurrent_gated_delta_rule = fused_recurrent_gated_delta_rule
         logger.info("Patched FLA ops + fused_gdn_gating for Ascend")
