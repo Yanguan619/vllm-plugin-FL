@@ -547,8 +547,8 @@ class AscendAttentionBackendImpl(AttentionImpl):
         attn_metadata: AscendMetadata,
     ):
         """Get parameters for fused_infer_attention."""
+        block_size = 128
         if attn_metadata.attn_state == AscendAttentionState.PrefillNoCache:
-            block_size = 128
             block_table = None
             actual_seq_lengths_kv = attn_metadata.actual_seq_lengths_q
         elif attn_metadata.attn_state == AscendAttentionState.PrefillCacheHit:
@@ -559,16 +559,15 @@ class AscendAttentionBackendImpl(AttentionImpl):
             value = self.value_cache.view(num_block, block_size, -1)
             actual_seq_lengths_kv = attn_metadata.seq_lens_list
         elif attn_metadata.attn_state == AscendAttentionState.DecodeOnly:
-            block_size = 128
             key = self.key_cache.view(-1, block_size, 256)
             value = self.value_cache.view(-1, block_size, 256)
             block_table = attn_metadata.block_tables
             actual_seq_lengths_kv = attn_metadata.seq_lens_list
         else:
             # ChunkedPrefill
-            num_block, block_size, _, _ = self.key_cache.shape
-            key = self.key_cache.view(num_block, block_size, -1)
-            value = self.value_cache.view(num_block, block_size, -1)
+            # num_block, block_size, _, _ = self.key_cache.shape
+            key = self.key_cache.view(-1, block_size, 256)
+            value = self.value_cache.view(-1, block_size, 256)
             block_table = attn_metadata.block_tables
             actual_seq_lengths_kv = attn_metadata.seq_lens_list
 
