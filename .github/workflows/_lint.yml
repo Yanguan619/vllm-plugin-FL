@@ -1,17 +1,13 @@
-name: "Pull Request Labeler"
+name: Lint
 
 on:
-  pull_request_target:
-    types: [opened, synchronize, reopened]
-
-permissions:
-  contents: read
-  pull-requests: write
+  workflow_call:
+  workflow_dispatch:
 
 jobs:
-  label:
+  lint:
+    name: Lint Check
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout (attempt 1)
         id: checkout1
@@ -26,9 +22,19 @@ jobs:
         if: steps.checkout2.outcome == 'failure'
         uses: actions/checkout@v4
 
-      - name: Apply labels
-        uses: actions/labeler@v5
-        continue-on-error: true  # Don't fail if config not yet on main branch
+      - name: Set up Python
+        uses: actions/setup-python@v5
         with:
-          repo-token: "${{ secrets.GITHUB_TOKEN }}"
-          sync-labels: true
+          python-version: "3.12"
+
+      - name: Install ruff
+        run: pip install ruff
+
+      - name: Ruff check
+        run: ruff check --output-format=github .
+
+      - name: Ruff format check
+        run: ruff format --check .
+
+      - name: Typos check
+        uses: crate-ci/typos@v1
