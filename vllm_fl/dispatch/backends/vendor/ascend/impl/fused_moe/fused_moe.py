@@ -1,8 +1,16 @@
-from typing import Optional
+# Copyright (c) 2025 BAAI. All rights reserved.
+# Adapted from https://github.com/vllm-project/vllm/blob/v0.11.0/vllm/model_executor/layers/fused_moe/layer.py
+# Below is the original copyright:
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: Copyright contributors to the vLLM project
+
+from typing import Optional, Union
 
 import torch
 import torch.nn.functional as F
 import torch_npu
+
+from vllm.model_executor.layers.fused_moe import FusedMoE
 
 
 def _torch_fused_experts_impl(
@@ -145,3 +153,51 @@ def fused_experts_impl(
         global_num_experts=global_num_experts,
         expert_map=expert_map,
     )
+
+
+
+class AscendFusedMoE(FusedMoE):
+    def forward_oot(
+        self,
+        hidden_states: torch.Tensor,
+        router_logits: torch.Tensor,
+    ) -> Union[torch.Tensor, tuple[torch.Tensor, torch.Tensor]]:
+        og_hidden_states = hidden_states.shape[-1]
+        if self.hidden_size != og_hidden_states:
+            hidden_states = F.pad(
+                hidden_states,
+                (0, self.hidden_size - og_hidden_states),
+                mode="constant",
+                value=0.0,
+            )
+
+        def reduce_output(states: torch.Tensor) -> torch.Tensor:
+            if (
+                not self.is_sequence_parallel
+                and not self.use_dp_chunking
+                and self.reduce_results
+                and (self.tp_size > 1 or self.ep_size > 1)
+            ):
+                states = self.maybe_all_reduce_tensor_model_parallel(states)
+            return states
+
+        if self.shared_experts is None:
+            fused_output = torch.ops.vllm.moe_forward(
+                hidden_states, router_logits, self.layer_name
+            )
+            if self.zero_expert_num is not None and self.zero_expert_num > 0:
+                assert isinstance(fused_output, tuple)
+                fused_output, zero_expert_result = fused_output
+                return (reduce_output(fused_output) + zero_expert_result)[
+                    ..., :og_hidden_states
+                ]
+            else:
+                return reduce_output(fused_output)[..., :og_hidden_states]
+        else:
+            shared_output, fused_output = torch.ops.vllm.moe_forward_shared(
+                hidden_states, router_logits, self.layer_name
+            )
+            return (
+                reduce_output(shared_output)[..., :og_hidden_states],
+                reduce_output(fused_output)[..., :og_hidden_states],
+            )

@@ -48,12 +48,14 @@ def patch_causal_conv1d():
 def patch_fused_moe():
     try:
         import vllm_fl.ops.fused_moe.fused_moe as _fused_moe_lib
+        import vllm_fl.ops.fused_moe.layer as _fused_moe_layer_lib
 
-        from .impl.fused_moe.fused_moe import fused_experts_impl
+        from .impl.fused_moe.fused_moe import fused_experts_impl, AscendFusedMoE
         from .impl.fused_moe.topk_softmax import vllm_topk_softmax
 
         _fused_moe_lib.fused_experts_impl = fused_experts_impl
         _fused_moe_lib.vllm_topk_softmax = vllm_topk_softmax
+        _fused_moe_layer_lib.FusedMoEFL.forward_oot = AscendFusedMoE.forward_oot
         logger.info("Patched fused_moe ops for Ascend")
     except Exception as e:
         logger.warning("Failed to patch fused_moe ops: %s", e)
@@ -70,15 +72,7 @@ def patch_fla_ops():
         from vllm_fl.dispatch.backends.vendor.ascend.impl.fla.chunk import (
             chunk_gated_delta_rule as ascend_chunk_gated_delta_rule,
         )
-        # from vllm_fl.dispatch.backends.vendor.ascend.impl.fla.fused_recurrent import (
-        #     fused_recurrent_gated_delta_rule as ascend_fused_recurrent,
-        # )
-        # from vllm_fl.dispatch.backends.vendor.ascend.impl.fla.fused_recurrent import (
-        #     fused_recurrent_gated_delta_rule_fwd_kernel as ascend_fused_recurrent_kernel,
-        # )
-        # from vllm_fl.dispatch.backends.vendor.ascend.impl.fla.layernorm_guard import (
-        #     LayerNormFn as ascend_LayerNormFn,
-        # )
+
         from flag_gems.runtime.backend._ascend.fla import chunk_gated_delta_rule_fwd, fused_recurrent_gated_delta_rule_fwd
         from flag_gems.runtime.backend._ascend.fla.layernorm_guard import (
             LayerNormFn as ascend_LayerNormFn,
@@ -87,12 +81,9 @@ def patch_fla_ops():
         _fla_ops_lib.chunk_gated_delta_rule_fwd = chunk_gated_delta_rule_fwd
         _fla_chunk_lib.chunk_gated_delta_rule_fwd = chunk_gated_delta_rule_fwd
         _fla_chunk_lib.chunk_gated_delta_rule =ascend_chunk_gated_delta_rule
-        # _fla_ops_lib.fused_recurrent_gated_delta_rule = fused_recurrent_gated_delta_rule
-        # _fla_recurrent_lib.fused_recurrent_gated_delta_rule = fused_recurrent_gated_delta_rule
         _fla_recurrent_lib.fused_recurrent_gated_delta_rule_fwd = fused_recurrent_gated_delta_rule_fwd
         _fla_layernorm_lib.LayerNormFn = ascend_LayerNormFn
-        _qwen3_next_lib.chunk_gated_delta_rule_fwd = chunk_gated_delta_rule_fwd
-        # _qwen3_next_lib.fused_recurrent_gated_delta_rule = fused_recurrent_gated_delta_rule
+        _qwen3_next_lib.chunk_gated_delta_rule = ascend_chunk_gated_delta_rule
         logger.info("Patched FLA ops + fused_gdn_gating for Ascend")
     except Exception as e:
         logger.warning("Failed to patch FLA ops: %s", e)
