@@ -376,6 +376,9 @@ class ModelRunnerFL(
         self.is_multimodal_pruning_enabled = False
         self.max_model_len = model_config.max_model_len
 
+        # use_hybrid_blocks: if hybrid blocks is used.
+        self.use_hybrid_blocks: bool = False
+
         # Always set to false after the first forward pass
         self.calculate_kv_scales = self.cache_config.calculate_kv_scales
         self.dcp_world_size = self.parallel_config.decode_context_parallel_size
@@ -5256,18 +5259,20 @@ class ModelRunnerFL(
                 num_blocks = raw_tensor.numel() // kv_cache_spec.page_size_bytes
                 if isinstance(kv_cache_spec, AttentionSpec):
                     has_attn = True
-                    num_blocks_per_kv_block = (
-                        kv_cache_spec.block_size // kernel_block_size
-                    )
-                    kernel_num_blocks = num_blocks * num_blocks_per_kv_block
+                    if hasattr(attn_backend, "get_supported_kernel_block_sizes") and self.use_hybrid_blocks:
+                        block_size = attn_backend.get_supported_kernel_block_sizes()[0]
 
-                    kv_cache_shape = attn_backend.get_kv_cache_shape(
-                        kernel_num_blocks,
-                        kernel_block_size,
-                        kv_cache_spec.num_kv_heads,
-                        kv_cache_spec.head_size,
-                        cache_dtype_str=self.cache_config.cache_dtype,
-                    )
+                        block_size_chunk = kv_cache_spec.block_size // block_size
+                        kv_cache_shape = attn_backend.get_kv_cache_shape(
+                            num_blocks * block_size_chunk,
+                            block_size,
+                            kv_cache_spec.num_kv_heads,
+                            kv_cache_spec.head_size,
+                        )
+                    else:
+                        kv_cache_shape = attn_backend.get_kv_cache_shape(
+                            num_blocks, kv_cache_spec.block_size, kv_cache_spec.num_kv_heads, kv_cache_spec.head_size
+                        )
                     dtype = kv_cache_spec.dtype
                     try:
                         kv_cache_stride_order = attn_backend.get_kv_cache_stride_order()
@@ -5446,6 +5451,8 @@ class ModelRunnerFL(
         self.may_add_encoder_only_layers_to_kv_cache_config()
         self.maybe_add_kv_sharing_layers_to_kv_cache_groups(kv_cache_config)
         self.initialize_attn_backend(kv_cache_config)
+        # use_hybrid_blocks: if hybrid blocks is used.
+        self.use_hybrid_blocks = len(self.attn_groups) > 1
         # The kernel block size for all KV cache groups. For example, if
         # kv_cache_manager uses block_size 256 for a given group, but the attention
         # backends for that group only supports block_size 64, we will return
