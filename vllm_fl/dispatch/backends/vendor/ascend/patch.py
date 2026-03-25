@@ -56,7 +56,7 @@ def patch_fused_moe():
 
         _fused_moe_lib.fused_experts_impl = fused_experts_impl
         _fused_moe_layer_lib.FusedMoEFL.forward_oot = AscendFusedMoE.forward_oot
-        fl_ops.FLOps.topk_softmax = AscendOps.topk_softmax
+        fl_ops.FLOps.topk_softmax = AscendOps.topk_softmax_torch
         # fl_ops.FLOps.silu_and_mul = AscendOps.silu_and_mul
         # fl_ops.FLOps.gelu_and_mul = AscendOps.gelu_and_mul
         # fl_ops.FLOps.moe_sum = AscendOps.moe_sum
