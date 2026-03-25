@@ -9,8 +9,44 @@ from typing import Optional, Union
 import torch
 import torch.nn.functional as F
 import torch_npu
-
+from flag_gems.runtime.backend._ascend import fused
 from vllm.model_executor.layers.fused_moe import FusedMoE
+
+
+class AscendOps:
+    ### activation
+    @staticmethod
+    def silu_and_mul(x):
+        d = x.shape[-1] // 2
+        x1, x2 = x[..., :d], x[..., d:]
+        return F.silu(x1) * x2
+
+    @staticmethod
+    def gelu_and_mul(x, approximate="none"):
+        return torch_npu.npu_gelu_mul(x, approximate=approximate)
+
+    ### moe
+    @staticmethod
+    def topk_softmax(topk_weights, topk_indices, token_expert_indices, gating_output, renormalize=False):
+        fused.topk_softmax(
+            topk_weights,
+            topk_indices,
+            token_expert_indices,
+            gating_output,
+            renormalize,
+        )
+        return topk_weights, topk_indices
+
+    @staticmethod
+    def moe_sum(input, output):
+        fused.moe_sum(input, output)
+
+    @staticmethod
+    def moe_align_block_size(topk_ids, num_experts, block_size, sorted_ids,
+                             expert_ids, num_tokens_post_pad,):
+        fused.moe_align_block_size_triton(topk_ids, num_experts, block_size, sorted_ids,
+                             expert_ids, num_tokens_post_pad,)
+
 
 
 def _torch_fused_experts_impl(

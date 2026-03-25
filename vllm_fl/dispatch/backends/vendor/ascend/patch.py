@@ -47,16 +47,20 @@ def patch_causal_conv1d():
 
 def patch_fused_moe():
     try:
+        import vllm_fl.ops._fl_ops as fl_ops
         import vllm_fl.ops.fused_moe.fused_moe as _fused_moe_lib
         import vllm_fl.ops.fused_moe.layer as _fused_moe_layer_lib
 
-        from .impl.fused_moe.fused_moe import fused_experts_impl, AscendFusedMoE
-        from .impl.fused_moe.topk_softmax import vllm_topk_softmax
+        from .impl.fused_moe import AscendFusedMoE, AscendOps, fused_experts_impl
 
         _fused_moe_lib.fused_experts_impl = fused_experts_impl
-        _fused_moe_lib.vllm_topk_softmax = vllm_topk_softmax
         _fused_moe_layer_lib.FusedMoEFL.forward_oot = AscendFusedMoE.forward_oot
-        logger.info("Patched fused_moe ops for Ascend")
+        fl_ops.FLOps.silu_and_mul = AscendOps.silu_and_mul
+        fl_ops.FLOps.gelu_and_mul = AscendOps.gelu_and_mul
+        fl_ops.FLOps.topk_softmax = AscendOps.topk_softmax
+        fl_ops.FLOps.moe_sum = AscendOps.moe_sum
+        fl_ops.FLOps.moe_align_block_size = AscendOps.moe_align_block_size
+        logger.info("Patched fl_ops.FLOps for Ascend")
     except Exception as e:
         logger.warning("Failed to patch fused_moe ops: %s", e)
 
@@ -68,14 +72,16 @@ def patch_fla_ops():
         import vllm.model_executor.layers.fla.ops.fused_recurrent as _fla_recurrent_lib
         import vllm.model_executor.layers.fla.ops.layernorm_guard as _fla_layernorm_lib
         import vllm.model_executor.models.qwen3_next as _qwen3_next_lib
+        from flag_gems.runtime.backend._ascend.fla import (
+            chunk_gated_delta_rule_fwd,
+            fused_recurrent_gated_delta_rule_fwd,
+        )
+        from flag_gems.runtime.backend._ascend.fla.layernorm_guard import (
+            LayerNormFn as ascend_LayerNormFn,
+        )
 
         from vllm_fl.dispatch.backends.vendor.ascend.impl.fla.chunk import (
             chunk_gated_delta_rule as ascend_chunk_gated_delta_rule,
-        )
-
-        from flag_gems.runtime.backend._ascend.fla import chunk_gated_delta_rule_fwd, fused_recurrent_gated_delta_rule_fwd
-        from flag_gems.runtime.backend._ascend.fla.layernorm_guard import (
-            LayerNormFn as ascend_LayerNormFn,
         )
 
         _fla_ops_lib.chunk_gated_delta_rule_fwd = chunk_gated_delta_rule_fwd
