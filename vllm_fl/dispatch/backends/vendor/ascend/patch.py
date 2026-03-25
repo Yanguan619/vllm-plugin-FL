@@ -46,6 +46,7 @@ def patch_causal_conv1d():
         logger.warning("Failed to patch causal_conv1d ops: %s", e)
 
 def patch_fused_moe():
+    """Patch fused MoE ops with Ascend implementations."""
     try:
         import vllm_fl.ops._fl_ops as fl_ops
         import vllm_fl.ops.fused_moe.fused_moe as _fused_moe_lib
@@ -55,11 +56,11 @@ def patch_fused_moe():
 
         _fused_moe_lib.fused_experts_impl = fused_experts_impl
         _fused_moe_layer_lib.FusedMoEFL.forward_oot = AscendFusedMoE.forward_oot
-        fl_ops.FLOps.silu_and_mul = AscendOps.silu_and_mul
-        fl_ops.FLOps.gelu_and_mul = AscendOps.gelu_and_mul
         fl_ops.FLOps.topk_softmax = AscendOps.topk_softmax
-        fl_ops.FLOps.moe_sum = AscendOps.moe_sum
-        fl_ops.FLOps.moe_align_block_size = AscendOps.moe_align_block_size
+        # fl_ops.FLOps.silu_and_mul = AscendOps.silu_and_mul
+        # fl_ops.FLOps.gelu_and_mul = AscendOps.gelu_and_mul
+        # fl_ops.FLOps.moe_sum = AscendOps.moe_sum
+        # fl_ops.FLOps.moe_align_block_size = AscendOps.moe_align_block_size
         logger.info("Patched fl_ops.FLOps for Ascend")
     except Exception as e:
         logger.warning("Failed to patch fused_moe ops: %s", e)
@@ -80,17 +81,15 @@ def patch_fla_ops():
             LayerNormFn as ascend_LayerNormFn,
         )
 
-        from vllm_fl.dispatch.backends.vendor.ascend.impl.fla.chunk import (
-            chunk_gated_delta_rule as ascend_chunk_gated_delta_rule,
-        )
+        from .impl.fla import ascend_chunk_gated_delta_rule
 
         _fla_ops_lib.chunk_gated_delta_rule_fwd = chunk_gated_delta_rule_fwd
         _fla_chunk_lib.chunk_gated_delta_rule_fwd = chunk_gated_delta_rule_fwd
-        _fla_chunk_lib.chunk_gated_delta_rule =ascend_chunk_gated_delta_rule
+        _fla_chunk_lib.chunk_gated_delta_rule = ascend_chunk_gated_delta_rule
         _fla_recurrent_lib.fused_recurrent_gated_delta_rule_fwd = fused_recurrent_gated_delta_rule_fwd
         _fla_layernorm_lib.LayerNormFn = ascend_LayerNormFn
         _qwen3_next_lib.chunk_gated_delta_rule = ascend_chunk_gated_delta_rule
-        logger.info("Patched FLA ops + fused_gdn_gating for Ascend")
+        logger.info("Patched FLA ops for Ascend")
     except Exception as e:
         logger.warning("Failed to patch FLA ops: %s", e)
 
@@ -111,14 +110,14 @@ def patch_op_cls():
         REGISTERED_ASCEND_OPS = {
             "VocabParallelEmbedding": AscendVocabParallelEmbedding,
             "MMEncoderAttention": AscendMMEncoderAttention,
-            }
+        }
         for name, op_cls in REGISTERED_ASCEND_OPS.items():
             CustomOp.register_oot(_decorated_op_cls=op_cls, name=name)
         logger.info("Patched MMEncoderAttention for NPU (matmul attention)")
     except Exception as e:
         logger.warning("Failed to patch MMEncoderAttention: %s", e)
 
-def refresh_block_size(vllm_config):
+def refresh_block_size(vllm_config, block_size = 128):
     """
     Refresh the block size in cache config.
     """
@@ -130,13 +129,13 @@ def refresh_block_size(vllm_config):
         return
 
     if cache_config.block_size is None:
-        cache_config.block_size = 128
+        cache_config.block_size = block_size
 
     if not scheduler_config or not model_config:
         return
 
     # TODO(MengqingCao): Remove the model_type check, after resolving the hidden error in get_kv_cache_groups.
-    if model_config.hf_text_config.model_type != "qwen3_next" and cache_config.block_size != 128:
+    if model_config.hf_text_config.model_type != "qwen3_next" and cache_config.block_size != block_size:
         if cache_config.enable_prefix_caching or scheduler_config.enable_chunked_prefill:
-            logger.info("Block size is set to 128 if prefix cache or chunked prefill is enabled.")
-            cache_config.block_size = 128
+            logger.info(f"Block size is set to {block_size} if prefix cache or chunked prefill is enabled.")
+            cache_config.block_size = block_size
