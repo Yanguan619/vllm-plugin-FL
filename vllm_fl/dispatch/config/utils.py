@@ -49,7 +49,7 @@ def get_platform_name() -> str:
     """
     try:
         from vllm.platforms import current_platform
-        return current_platform.device_name
+        return current_platform.vendor_name
     except ImportError:
         pass
 
