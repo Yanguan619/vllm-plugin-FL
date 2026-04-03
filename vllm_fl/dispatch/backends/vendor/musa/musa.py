@@ -1,10 +1,10 @@
 # Copyright (c) 2026 BAAI. All rights reserved.
 
 """
-ILUVATAR backend implementation.
+MUSA backend implementation.
 
-This backend provides operator implementations for Iluvatar GPUs.
-Iluvatar uses a CUDA-compatible architecture.
+This backend provides operator implementations for Musa GPUs.
+Musa uses a CUDA-compatible architecture.
 """
 
 from __future__ import annotations
@@ -16,54 +16,32 @@ import torch
 from vllm_fl.dispatch.backends.base import Backend
 
 
-class IluvatarBackend(Backend):
+class MusaBackend(Backend):
     """
-    Iluvatar backend for operator implementations.
+    Musa backend for operator implementations.
 
-    This backend uses Iluvatar libraries to provide high-performance
-    operator implementations for Iluvatar GPUs.
+    This backend uses Musa libraries to provide high-performance
+    operator implementations for Musa GPUs.
     """
 
     _available: Optional[bool] = None
 
     @property
     def name(self) -> str:
-        return "iluvatar"
+        return "musa"
 
     @property
     def vendor(self) -> Optional[str]:
-        return "iluvatar"
+        return "musa"
 
     def is_available(self) -> bool:
         """
-        Check if Iluvatar hardware and libraries are available.
+        Check if Musa hardware and libraries are available.
 
         This method uses the platform's vendor information to determine
-        if the device is an Iluvatar GPU.
+        if the device is an Musa GPU.
         """
-        if IluvatarBackend._available is None:
-            try:
-                from vllm.platforms import current_platform
-                # Iluvatar GPUs should be detected via vendor_name
-                if hasattr(current_platform, 'vendor_name') and current_platform.vendor_name == "iluvatar":
-                    IluvatarBackend._available = True
-                else:
-                    # Fallback: check if CUDA is available with iluvatar device
-                    if torch.cuda.is_available():
-                        # Try to detect Iluvatar GPU
-                        # Iluvatar GPUs typically expose CUDA-compatible interface
-                        # We can check device name if available
-                        device_name = torch.cuda.get_device_name(0)
-                        if "iluvatar" in device_name.lower():
-                            IluvatarBackend._available = True
-                        else:
-                            IluvatarBackend._available = False
-
-                    else:
-                        IluvatarBackend._available = False
-            except Exception:
-                IluvatarBackend._available = False
-        return IluvatarBackend._available
+        return torch.musa.is_available()
 
     # ==================== Operator Implementations ====================
 
@@ -78,9 +56,9 @@ class IluvatarBackend(Backend):
         Returns:
             Output tensor of shape [..., d]
         """
-        from .impl.activation import silu_and_mul_iluvatar
+        from .impl.activation import silu_and_mul_musa
 
-        return silu_and_mul_iluvatar(obj, x)
+        return silu_and_mul_musa(obj, x)
 
     def rms_norm(
         self,
@@ -99,9 +77,9 @@ class IluvatarBackend(Backend):
         Returns:
             Normalized tensor, or tuple of (normalized, residual) if residual is provided
         """
-        from .impl.normalization import rms_norm_iluvatar
+        from .impl.normalization import rms_norm_musa
 
-        return rms_norm_iluvatar(obj, x, residual)
+        return rms_norm_musa(obj, x, residual)
 
     def rotary_embedding(
         self,
@@ -130,9 +108,9 @@ class IluvatarBackend(Backend):
         Returns:
             Tuple of (embedded_query, embedded_key)
         """
-        from .impl.rotary import rotary_embedding_iluvatar
+        from .impl.rotary import rotary_embedding_musa
 
-        return rotary_embedding_iluvatar(
+        return rotary_embedding_musa(
             obj,
             query,
             key,
@@ -143,13 +121,12 @@ class IluvatarBackend(Backend):
             inplace=inplace,
         )
 
-    def attention_backend(self, use_mla: bool = False, use_sparse: bool = False) -> str:
+    def attention_backend(self, use_mla: bool = False) -> str:
         """
-        Get the attention backend class path for Iluvatar.
+        Get the attention backend class path for Musa.
 
         Args:
             use_mla: Whether to use Multi-head Latent Attention (MLA)
-            use_sparse: Whether to use Deepseek Sparse Attention (DSA)
 
         Returns:
             Fully qualified class path string
@@ -157,8 +134,6 @@ class IluvatarBackend(Backend):
         from vllm.attention.backends.registry import AttentionBackendEnum
 
         if use_mla:
-            if use_sparse:
-                return AttentionBackendEnum.FLASHMLA_SPARSE.get_path()
-            return AttentionBackendEnum.FLASHMLA.get_path()
+            return AttentionBackendEnum.TRITON_MLA.get_path()
 
         return AttentionBackendEnum.FLASH_ATTN.get_path()

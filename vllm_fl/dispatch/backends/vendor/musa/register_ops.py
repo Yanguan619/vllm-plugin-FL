@@ -1,17 +1,16 @@
 # Copyright (c) 2026 BAAI. All rights reserved.
 
 """
-Ascend backend operator registrations.
+MUSA backend operator registrations.
 
-This module registers all VENDOR (Ascend) implementations.
+This module registers all VENDOR (MUSA) implementations.
 """
 
 from __future__ import annotations
 
 import functools
 
-from vllm_fl.dispatch.registry import OpRegistry
-from vllm_fl.dispatch.types import BackendImplKind, BackendPriority, OpImpl
+from vllm_fl.dispatch.types import OpImpl, BackendImplKind, BackendPriority
 
 
 def _bind_is_available(fn, is_available_fn):
@@ -25,53 +24,53 @@ def _bind_is_available(fn, is_available_fn):
     return wrapper
 
 
-def register_builtins(registry: OpRegistry) -> None:
+def register_builtins(registry) -> None:
     """
-    Register all Ascend (VENDOR) operator implementations.
+    Register all MUSA (VENDOR) operator implementations.
 
     Args:
         registry: Registry to register into
     """
-    from .ascend import AscendBackend
+    from .musa import MusaBackend
 
-    backend = AscendBackend()
+    backend = MusaBackend()
     is_avail = backend.is_available
 
     impls = [
         # Activation
         OpImpl(
             op_name="silu_and_mul",
-            impl_id="vendor.ascend",
+            impl_id="vendor.musa",
             kind=BackendImplKind.VENDOR,
             fn=_bind_is_available(backend.silu_and_mul, is_avail),
-            vendor="ascend",
+            vendor="musa",
             priority=BackendPriority.VENDOR,
         ),
         # Normalization
         OpImpl(
             op_name="rms_norm",
-            impl_id="vendor.ascend",
+            impl_id="vendor.musa",
             kind=BackendImplKind.VENDOR,
             fn=_bind_is_available(backend.rms_norm, is_avail),
-            vendor="ascend",
+            vendor="musa",
             priority=BackendPriority.VENDOR,
         ),
         # Rotary Embedding
         OpImpl(
             op_name="rotary_embedding",
-            impl_id="vendor.ascend",
+            impl_id="vendor.musa",
             kind=BackendImplKind.VENDOR,
             fn=_bind_is_available(backend.rotary_embedding, is_avail),
-            vendor="ascend",
+            vendor="musa",
             priority=BackendPriority.VENDOR,
         ),
         # Attention Backend
         OpImpl(
             op_name="attention_backend",
-            impl_id="vendor.ascend",
+            impl_id="vendor.musa",
             kind=BackendImplKind.VENDOR,
             fn=_bind_is_available(backend.attention_backend, is_avail),
-            vendor="ascend",
+            vendor="musa",
             priority=BackendPriority.VENDOR,
         ),
     ]

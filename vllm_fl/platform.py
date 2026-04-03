@@ -29,7 +29,7 @@ else:
     VllmConfig = None
     CacheDType = None
 
-from vllm_fl.utils import DeviceInfo
+from vllm_fl.utils import DeviceInfo, get_device_name, get_device_type
 
 logger = init_logger(__name__)
 
@@ -46,12 +46,8 @@ class PlatformFL(Platform):
     _enum = PlatformEnum.OOT
     device_info = DeviceInfo()
     vendor_name = device_info.vendor_name
-    # cuda_alike (nvidia/metax): device_name = vendor_name (not used in torch.device)
-    # non-cuda_alike (iluvatar/ascend): device_name = device_type (used in torch.device)
-    device_name = device_info.vendor_name if (
-        device_info.device_type == "cuda" and device_info.vendor_name != "iluvatar"
-    ) else device_info.device_type
-    device_type = device_info.device_type
+    device_type = get_device_type(vendor_name)
+    device_name = get_device_name(vendor_name)
     dispatch_key = device_info.dispatch_key
     torch_device_fn = device_info.torch_device_fn
     ray_device_key: str = "GPU"
@@ -65,12 +61,20 @@ class PlatformFL(Platform):
         """Stateless version of [torch.cuda.is_available][]."""
         if self.vendor_name == "iluvatar":
             return False
+        if self.vendor_name == "musa":
+            return True
         return self.device_type == "cuda"
 
     def is_cuda(self) -> bool:
         """Stateless version of [torch.cuda.is_available][]."""
+        if self.vendor_name == "musa":
+            return True
         return self.device_type == "cuda" and self.vendor_name == "nvidia"
 
+    def is_musa(self) -> bool:
+        if hasattr(torch, 'musa') and torch.musa.is_available():
+            return True
+        return False
     @property
     def supported_dtypes(self) -> list[torch.dtype]:
         return [torch.bfloat16, torch.float16, torch.float32]
@@ -108,7 +112,7 @@ class PlatformFL(Platform):
     ### TODO(lms): change pin_memory depend device
     @classmethod
     def is_pin_memory_available(cls):
-        if cls.device_type in ["cuda", "xpu", "npu"]:
+        if cls.device_type in ["cuda", "xpu", "npu", "musa"]:
             return True
         return False
 
@@ -146,6 +150,9 @@ class PlatformFL(Platform):
             if cls.device_type == "npu":
                 cache_config.block_size = 128
                 logger.info("Setting kv cache block size to 128 for Ascend NPU.")
+            elif cls.device_type == "musa":
+                cache_config.block_size = 64
+                logger.info("Setting kv cache block size to 64 for MUSA.")
             else:
                 cache_config.block_size = 16
 
@@ -338,7 +345,9 @@ class PlatformFL(Platform):
         # TODO(yxa): For NPU/Ascend devices, return None (no capability version like CUDA)
         if cls.device_type == "npu":
             return None
-        # For CUDA devices
+        if cls.device_type == "musa":
+            major, minor = torch.musa.get_device_capability(device_id)
+            return DeviceCapability(major=major, minor=minor)
         major, minor = torch.cuda.get_device_capability(device_id)
         return DeviceCapability(major=major, minor=minor)
 
