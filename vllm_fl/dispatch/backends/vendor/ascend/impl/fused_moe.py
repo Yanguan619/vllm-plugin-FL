@@ -10,6 +10,7 @@ import torch
 import torch.nn.functional as F
 import torch_npu
 from flag_gems.runtime.backend._ascend import fused
+import vllm.envs as envs
 from vllm.model_executor.layers.fused_moe import FusedMoE
 from .fused_npu import unquant_apply_mlp
 
