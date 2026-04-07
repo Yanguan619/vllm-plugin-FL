@@ -4,15 +4,28 @@
 # SPDX-License-Identifier: Apache-2.0
 # SPDX-FileCopyrightText: Copyright contributors to the vLLM project
 
+import functools
 from typing import Optional, Union
 
 import torch
 import torch.nn.functional as F
 import torch_npu
-from flag_gems.runtime.backend._ascend import fused
 import vllm.envs as envs
+from flag_gems.runtime.backend._ascend import fused
 from vllm.model_executor.layers.fused_moe import FusedMoE
+from vllm.model_executor.layers.fused_moe.config import _get_config_dtype_str
+from vllm.model_executor.layers.fused_moe.fused_moe import (
+    _get_config_quant_dtype,
+    try_get_optimal_moe_config,
+)
+from vllm.model_executor.layers.fused_moe.utils import moe_kernel_quantize_input
+from vllm.triton_utils import tl
+
+from vllm_fl.ops._fl_ops import FLOps as fl_ops
+from vllm_fl.ops.fused_moe.moe_align_block_size import moe_align_block_size
+
 from .fused_npu import unquant_apply_mlp
+
 
 def _expert_ids_to_group_list(expert_ids: torch.Tensor, num_experts: int) -> torch.Tensor:
     """
