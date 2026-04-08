@@ -53,13 +53,25 @@ class AscendOps:
 
     ### moe
     @staticmethod
-    def topk_softmax(topk_weights, topk_indices, token_expert_indices, gating_output, renormalize=False,):
-        fused.topk_softmax(
-            topk_weights,
-            topk_indices,
-            token_expert_indices,
-            gating_output,
-            renormalize,
+    def topk_softmax_torch_npu(
+        topk_weights: torch.Tensor,
+        topk_indices: torch.Tensor,
+        token_expert_indices: torch.Tensor,
+        gating_output: torch.Tensor,
+        renormalize: bool = False,
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        topk_weights, topk_indices, _ = torch_npu.npu_moe_gating_top_k(
+            gating_output,  # router_logits
+            k=topk_weights.size(1),
+            renorm=int(renormalize),
+            k_group=1,
+            group_count=1,
+            group_select_mode=1,
+            norm_type=0,  # softmax
+            out_flag=False,
+            routed_scaling_factor=1.0,
+            eps=float(1e-20),
+            bias=None,
         )
         return topk_weights, topk_indices
 
@@ -114,6 +126,9 @@ class AscendOps:
         w1_bias: Optional[torch.Tensor] = None,
         w2_bias: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
+        """
+        BUG
+        """
         # Check constraints.
         if use_int4_w4a16:
             assert hidden_states.size(1) // 2 == w1.size(2), "Hidden size mismatch"
@@ -255,9 +270,9 @@ class AscendOps:
             )
 
             # moe_sum: gather results back to original token order
-            # Need to reshape output to match expected format for moe_sum
-            num_output_tokens = sorted_token_ids.shape[0]
-            output_reshaped = output.view(num_output_tokens, -1)
+            # Need to reshape output to match expected format for moe_sum [num_tokens_post_padded, top_k, hidden]
+            # Use num_tokens_post_padded instead of sorted_token_ids.shape[0] to handle padding
+            output_reshaped = output.view(num_tokens_post_padded, top_k_num, -1)
             fl_ops.moe_sum(
                 output_reshaped,
                 out_hidden_states[begin_chunk_idx:end_chunk_idx],
@@ -418,51 +433,3 @@ def fused_experts_impl(
         global_num_experts=global_num_experts,
         expert_map=expert_map,
     )
-
-
-
-class AscendFusedMoE(FusedMoE):
-    def forward_oot(
-        self,
-        hidden_states: torch.Tensor,
-        router_logits: torch.Tensor,
-    ) -> Union[torch.Tensor, tuple[torch.Tensor, torch.Tensor]]:
-        og_hidden_states = hidden_states.shape[-1]
-        if self.hidden_size != og_hidden_states:
-            hidden_states = F.pad(
-                hidden_states,
-                (0, self.hidden_size - og_hidden_states),
-                mode="constant",
-                value=0.0,
-            )
-
-        def reduce_output(states: torch.Tensor) -> torch.Tensor:
-            if (
-                not self.is_sequence_parallel
-                and not self.use_dp_chunking
-                and self.reduce_results
-                and (self.tp_size > 1 or self.ep_size > 1)
-            ):
-                states = self.maybe_all_reduce_tensor_model_parallel(states)
-            return states
-
-        if self.shared_experts is None:
-            fused_output = torch.ops.vllm.moe_forward(
-                hidden_states, router_logits, self.layer_name
-            )
-            if self.zero_expert_num is not None and self.zero_expert_num > 0:
-                assert isinstance(fused_output, tuple)
-                fused_output, zero_expert_result = fused_output
-                return (reduce_output(fused_output) + zero_expert_result)[
-                    ..., :og_hidden_states
-                ]
-            else:
-                return reduce_output(fused_output)[..., :og_hidden_states]
-        else:
-            shared_output, fused_output = torch.ops.vllm.moe_forward_shared(
-                hidden_states, router_logits, self.layer_name
-            )
-            return (
-                reduce_output(shared_output)[..., :og_hidden_states],
-                reduce_output(fused_output)[..., :og_hidden_states],
-            )

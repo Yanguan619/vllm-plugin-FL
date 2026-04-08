@@ -32,15 +32,13 @@ def patch_causal_conv1d():
         import vllm.model_executor.layers.mamba.ops.causal_conv1d as _conv1d_lib
         import vllm.model_executor.models.qwen3_next as _qwen3_next_lib
 
-        from .impl.causal_conv1d import causal_conv1d_fn as ascend_causal_conv1d_fn
-        from .impl.causal_conv1d import (
-            causal_conv1d_update_npu as ascend_causal_conv1d_update,
-        )
+        from .impl.causal_conv1d import causal_conv1d_fn as causal_conv1d_fn_npu
+        from .impl.causal_conv1d import causal_conv1d_update_npu
 
-        _conv1d_lib.causal_conv1d_fn = ascend_causal_conv1d_fn
-        _conv1d_lib.causal_conv1d_update = ascend_causal_conv1d_update
-        _qwen3_next_lib.causal_conv1d_fn = ascend_causal_conv1d_fn
-        _qwen3_next_lib.causal_conv1d_update = ascend_causal_conv1d_update
+        _conv1d_lib.causal_conv1d_fn = causal_conv1d_fn_npu
+        _conv1d_lib.causal_conv1d_update = causal_conv1d_update_npu
+        _qwen3_next_lib.causal_conv1d_fn = causal_conv1d_fn_npu
+        _qwen3_next_lib.causal_conv1d_update = causal_conv1d_update_npu
         logger.info("Patched causal_conv1d ops for Ascend")
     except Exception as e:
         logger.warning("Failed to patch causal_conv1d ops: %s", e)
@@ -49,20 +47,13 @@ def patch_fused_moe():
     """Patch fused MoE ops with Ascend implementations."""
     try:
         import vllm_fl.ops._fl_ops as fl_ops
-        import vllm_fl.ops.fused_moe.fused_moe as _fused_moe_lib
-        import vllm_fl.ops.fused_moe.layer as _fused_moe_layer_lib
+        import vllm_fl.ops.fused_moe.fused_moe as fused_moe_lib
 
-        from .impl.fused_moe import AscendFusedMoE, AscendOps, fused_experts_impl
+        from .impl.fused_moe import AscendOps, fused_experts_impl
 
-        # _fused_moe_lib.fused_experts_impl = fused_experts_impl
-        _fused_moe_lib.fused_experts_impl = AscendOps.fused_experts_impl
-        _fused_moe_layer_lib.FusedMoEFL.forward_oot = AscendFusedMoE.forward_oot
-        fl_ops.FLOps.topk_softmax = AscendOps.topk_softmax_torch
+        fused_moe_lib.fused_experts_impl = fused_experts_impl
+        fl_ops.FLOps.topk_softmax = AscendOps.topk_softmax_torch_npu
 
-        # fl_ops.FLOps.silu_and_mul = AscendOps.silu_and_mul
-        # fl_ops.FLOps.gelu_and_mul = AscendOps.gelu_and_mul
-        # fl_ops.FLOps.moe_sum = AscendOps.moe_sum
-        # fl_ops.FLOps.moe_align_block_size = AscendOps.moe_align_block_size
         logger.info("Patched fl_ops.FLOps for Ascend")
     except Exception as e:
         logger.warning("Failed to patch fused_moe ops: %s", e)
@@ -83,14 +74,14 @@ def patch_fla_ops():
             LayerNormFn as ascend_LayerNormFn,
         )
 
-        from .impl.fla import ascend_chunk_gated_delta_rule
+        from .impl.fla import chunk_gated_delta_rule_npu
 
         _fla_ops_lib.chunk_gated_delta_rule_fwd = chunk_gated_delta_rule_fwd
         _fla_chunk_lib.chunk_gated_delta_rule_fwd = chunk_gated_delta_rule_fwd
-        _fla_chunk_lib.chunk_gated_delta_rule = ascend_chunk_gated_delta_rule
+        _fla_chunk_lib.chunk_gated_delta_rule = chunk_gated_delta_rule_npu
         _fla_recurrent_lib.fused_recurrent_gated_delta_rule_fwd = fused_recurrent_gated_delta_rule_fwd
         _fla_layernorm_lib.LayerNormFn = ascend_LayerNormFn
-        _qwen3_next_lib.chunk_gated_delta_rule = ascend_chunk_gated_delta_rule
+        _qwen3_next_lib.chunk_gated_delta_rule = chunk_gated_delta_rule_npu
         logger.info("Patched FLA ops for Ascend")
     except Exception as e:
         logger.warning("Failed to patch FLA ops: %s", e)
