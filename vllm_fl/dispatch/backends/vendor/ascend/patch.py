@@ -49,10 +49,9 @@ def patch_fused_moe():
         import vllm_fl.ops._fl_ops as fl_ops
         import vllm_fl.ops.fused_moe.fused_moe as fused_moe_lib
 
-        from .impl.fused_moe import AscendOps, fused_experts_impl
+        from .impl.fused_moe import fused_experts_impl
 
         fused_moe_lib.fused_experts_impl = fused_experts_impl
-        fl_ops.FLOps.topk_softmax = AscendOps.topk_softmax_torch_npu
 
         logger.info("Patched fl_ops.FLOps for Ascend")
     except Exception as e:
