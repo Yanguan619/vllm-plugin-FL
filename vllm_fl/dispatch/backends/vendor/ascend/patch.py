@@ -46,7 +46,6 @@ def patch_causal_conv1d():
 def patch_fused_moe():
     """Patch fused MoE ops with Ascend implementations."""
     try:
-        import vllm_fl.ops._fl_ops as fl_ops
         import vllm_fl.ops.fused_moe.fused_moe as fused_moe_lib
 
         from .impl.fused_moe import fused_experts_impl
