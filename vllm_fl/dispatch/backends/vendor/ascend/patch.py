@@ -46,9 +46,12 @@ def patch_causal_conv1d():
 def patch_fused_moe():
     """Patch fused MoE ops with Ascend implementations."""
     try:
-        import vllm_fl.ops.fused_moe.fused_moe as fused_moe_lib
-
         from flag_gems import fused_experts_impl
+        logger.info("use fused_experts_impl from flag_gems.")
+    except Exception as e:
+        from .impl.fused_moe import fused_experts_impl
+    try:
+        import vllm_fl.ops.fused_moe.fused_moe as fused_moe_lib
 
         fused_moe_lib.fused_experts_impl = fused_experts_impl
 
