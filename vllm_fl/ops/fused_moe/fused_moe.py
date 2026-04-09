@@ -8,7 +8,6 @@ from typing import Optional
 import functools
 import torch
 import torch.nn.functional as F
-import vllm.envs as envs
 from vllm.model_executor.layers.fused_moe.config import (
     FUSED_MOE_UNQUANTIZED_CONFIG,
     FusedMoEQuantConfig,
@@ -17,24 +16,11 @@ from vllm.model_executor.layers.fused_moe.config import (
 from vllm.model_executor.layers.fused_moe.fused_moe import (
     _get_config_quant_dtype,
     try_get_optimal_moe_config,
-    invoke_fused_moe_kernel,
+    dispatch_fused_moe_kernel,
 )
 from vllm.model_executor.layers.fused_moe.utils import moe_kernel_quantize_input
 from vllm.triton_utils import tl
-from vllm_fl.ops.fused_moe.moe_align_block_size import moe_align_block_size
-from vllm_fl.ops._fl_ops import FLOps as fl_ops
-
-
-def vllm_topk_softmax(
-    topk_weights: torch.Tensor,
-    topk_indices: torch.Tensor,
-    token_expert_indices: torch.Tensor,
-    gating_output: torch.Tensor,
-    renormalize: bool,
-) -> tuple[torch.Tensor, ...]:
-    return fl_ops.topk_softmax(
-        topk_weights, topk_indices, token_expert_indices, gating_output, renormalize
-    )
+from vllm_fl.dispatch import call_op
 
 
 def fused_topk(
@@ -61,8 +47,14 @@ def fused_topk(
         M, topk, dtype=torch.int32, device=hidden_states.device
     )
 
-    topk_weights, topk_ids = vllm_topk_softmax(
-        topk_weights, topk_ids, token_expert_indices, gating_output, renormalize
+    # topk_weights, topk_ids = vllm_topk_softmax(
+    topk_weights, topk_ids = call_op(
+        "topk_softmax",
+        topk_weights,
+        topk_ids,
+        token_expert_indices,
+        gating_output,
+        renormalize,
     )
 
     return topk_weights, topk_ids, token_expert_indices
@@ -116,7 +108,9 @@ def fused_experts_impl(
     top_k_num = topk_ids.size(1)
     # We execute the fused_moe kernel in chunks to circumvent this issue:
     # https://github.com/vllm-project/vllm/issues/5938
-    CHUNK_SIZE = envs.VLLM_FUSED_MOE_CHUNK_SIZE
+    # Note: upstream removed VLLM_FUSED_MOE_CHUNK_SIZE in v0.18.1;
+    # keep the old default (64K) for the FL chunked implementation.
+    CHUNK_SIZE = 65536
     M = min(num_tokens, CHUNK_SIZE)
 
     config_dtype = _get_config_dtype_str(
@@ -207,7 +201,8 @@ def fused_experts_impl(
             block_shape=block_shape,
         )
 
-        sorted_token_ids, expert_ids, num_tokens_post_padded = moe_align_block_size(
+        sorted_token_ids, expert_ids, num_tokens_post_padded = call_op(
+            "moe_align_block_size",
             curr_topk_ids,
             config["BLOCK_SIZE_M"],
             global_num_experts,
@@ -215,7 +210,7 @@ def fused_experts_impl(
             ignore_invalid_experts=True,
         )
 
-        invoke_fused_moe_kernel(
+        dispatch_fused_moe_kernel(
             qcurr_hidden_states,
             w1,
             intermediate_cache1,
@@ -241,12 +236,19 @@ def fused_experts_impl(
 
         # Activation function with multiplication
         # todo: dispatch to flag_gems and other backends
+        # v0.18.1: activation may be a MoEActivation enum; normalize to str
+        if hasattr(activation, "value"):
+            activation = activation.value
         if activation == "silu":
-            intermediate_cache2 = fl_ops.silu_and_mul(intermediate_cache1.view(-1, N))
+            intermediate_cache2 = call_op(
+                "silu_and_mul", None, intermediate_cache1.view(-1, N)
+            )
             # torch.ops._C.silu_and_mul(intermediate_cache2,
             #                           intermediate_cache1.view(-1, N))
         elif activation == "gelu":
-            intermediate_cache2 = fl_ops.gelu_and_mul(intermediate_cache1.view(-1, N))
+            intermediate_cache2 = call_op(
+                "gelu_and_mul", None, intermediate_cache1.view(-1, N)
+            )
         # Activation function without multiplication
         elif activation == "silu_no_mul":
             intermediate_cache2 = F.silu(intermediate_cache1.view(-1, N))
@@ -264,7 +266,7 @@ def fused_experts_impl(
             block_shape=block_shape,
         )
 
-        invoke_fused_moe_kernel(
+        dispatch_fused_moe_kernel(
             qintermediate_cache2,
             w2,
             intermediate_cache3,
@@ -288,7 +290,8 @@ def fused_experts_impl(
             B_bias=w2_bias,
         )
 
-        fl_ops.moe_sum(
+        call_op(
+            "moe_sum",
             intermediate_cache3.view(*intermediate_cache3.size()),
             out_hidden_states[begin_chunk_idx:end_chunk_idx],
         )

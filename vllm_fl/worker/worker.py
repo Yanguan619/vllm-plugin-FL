@@ -1,5 +1,5 @@
 # Copyright (c) 2025 BAAI. All rights reserved.
-# Adapted from https://github.com/vllm-project/vllm/blob/v0.11.0/vllm/v1/worker/gpu_model_runner.py
+# Adapted from https://github.com/vllm-project/vllm/blob/v0.19.0/vllm/v1/worker/gpu_worker.py
 # Below is the original copyright:
 # SPDX-License-Identifier: Apache-2.0
 # SPDX-FileCopyrightText: Copyright contributors to the vLLM project
@@ -16,7 +16,7 @@ import torch
 import torch.distributed
 import torch.nn as nn
 
-from vllm.config import CUDAGraphMode, VllmConfig
+from vllm.config import CUDAGraphMode, VllmConfig, set_current_vllm_config
 from vllm.config.compilation import CompilationMode
 from vllm.distributed import (
     ensure_model_parallel_initialized,
@@ -29,7 +29,6 @@ from vllm.distributed.kv_transfer import (
     get_kv_transfer_group,
     has_kv_transfer_group,
 )
-# from vllm.model_executor.warmup.kernel_warmup import kernel_warmup
 try:
     from vllm.model_executor.warmup.kernel_warmup import kernel_warmup
 except ImportError:
@@ -48,7 +47,7 @@ from vllm.distributed.parallel_state import (
 )
 from vllm.logger import init_logger
 from vllm.lora.request import LoRARequest
-from vllm.model_executor import set_random_seed
+from vllm.utils.torch_utils import set_random_seed
 from vllm.model_executor.models.interfaces import is_mixture_of_experts
 from vllm.platforms import current_platform
 from vllm.profiler.wrapper import TorchProfilerWrapper
@@ -67,6 +66,7 @@ from vllm.v1.worker.workspace import init_workspace_manager
 import vllm_fl.envs as fl_envs
 
 from vllm_fl.ops.custom_ops import register_oot_ops
+from vllm_fl.dispatch.io_common import managed_inference_mode
 from vllm_fl.utils import get_flag_gems_whitelist_blacklist
 
 logger = init_logger(__name__)
@@ -206,11 +206,6 @@ class WorkerFL(WorkerBase):
             distributed_init_method=distributed_init_method,
             is_driver_worker=is_driver_worker,
         )
-        if self.model_config.trust_remote_code:
-            # note: lazy import to avoid importing torch before initializing
-            from vllm.utils.import_utils import init_cached_hf_modules
-
-            init_cached_hf_modules()
 
         # Buffers saved before sleep
         self._sleep_saved_buffers: dict[str, torch.Tensor] = {}
@@ -425,10 +420,10 @@ class WorkerFL(WorkerBase):
 
     # FIXME(youkaichao & ywang96): Use TorchDispatchMode instead of memory pool
     # to hijack tensor allocation.
-    def load_model(self) -> None:
-        eep_scale_up = os.environ.get("VLLM_ELASTIC_EP_SCALE_UP_LAUNCH") == "1"
+    def load_model(self, *, load_dummy_weights: bool = False) -> None:
         ### TODO(lms): support manages a memory pool for device tensors.
-        self.model_runner.load_model(eep_scale_up=eep_scale_up)
+        with set_current_vllm_config(self.vllm_config):
+            self.model_runner.load_model(load_dummy_weights=load_dummy_weights)
         # with self._maybe_get_memory_pool_context(tag="weights"):
         #     self.model_runner.load_model(eep_scale_up=eep_scale_up)
 
@@ -438,7 +433,7 @@ class WorkerFL(WorkerBase):
     def reload_weights(self) -> None:
         self.model_runner.reload_weights()
 
-    @torch.inference_mode()
+    @managed_inference_mode()
     def determine_available_memory(self) -> int:
         """Profiles the peak memory usage of the model to determine how much
         memory can be used for KV cache without OOMs.
@@ -542,6 +537,11 @@ class WorkerFL(WorkerBase):
     def get_kv_cache_spec(self) -> dict[str, KVCacheSpec]:
         return self.model_runner.get_kv_cache_spec()
 
+    def update_max_model_len(self, max_model_len: int) -> None:
+        """Update max_model_len after auto-fit to GPU memory."""
+        self.model_config.max_model_len = max_model_len
+        self.model_runner.max_model_len = max_model_len
+
     def initialize_from_config(self, kv_cache_config: KVCacheConfig) -> None:
         """Allocate GPU KV cache with the specified kv_cache_config."""
         # Init kv cache connector here, because it requires
@@ -561,7 +561,7 @@ class WorkerFL(WorkerBase):
         #     context = nullcontext()
         self.model_runner.initialize_kv_cache(kv_cache_config)
 
-    def compile_or_warm_up_model(self) -> None:
+    def compile_or_warm_up_model(self) -> float:
         warmup_sizes = []
         if self.vllm_config.compilation_config.mode == CompilationMode.VLLM_COMPILE:
             # warm up sizes that are not in cudagraph capture sizes,
@@ -684,14 +684,23 @@ class WorkerFL(WorkerBase):
         # the model initialization and profiling.
         set_random_seed(self.model_config.seed)
 
+        return self.compilation_config.compilation_time
+
     def reset_mm_cache(self) -> None:
         self.model_runner.reset_mm_cache()
+
+    def reset_encoder_cache(self) -> None:
+        self.model_runner.reset_encoder_cache()
 
     def get_model(self) -> nn.Module:
         return self.model_runner.get_model()
 
     def get_supported_tasks(self) -> tuple[SupportedTask, ...]:
         return self.model_runner.get_supported_tasks()
+
+    def get_encoder_timing_stats(self) -> dict[str, dict[str, float | int]]:
+        """Get encoder timing stats from model runner."""
+        return self.model_runner.get_encoder_timing_stats()
 
     def annotate_profile(self, scheduler_output):
         # add trace annotation so that we can easily distinguish
@@ -708,13 +717,13 @@ class WorkerFL(WorkerBase):
             f"execute_new_{num_new}_cached_{num_cached}"
         )
 
-    @torch.inference_mode()
+    @managed_inference_mode()
     def sample_tokens(
         self, grammar_output: "GrammarOutput | None"
     ) -> ModelRunnerOutput | AsyncModelRunnerOutput:
         return self.model_runner.sample_tokens(grammar_output)
 
-    @torch.inference_mode()
+    @managed_inference_mode()
     def execute_model(
         self,
         scheduler_output: "SchedulerOutput",
@@ -785,7 +794,7 @@ class WorkerFL(WorkerBase):
     def take_draft_token_ids(self) -> Optional[DraftTokenIds]:
         return self.model_runner.take_draft_token_ids()
 
-    def profile(self, is_start: bool = True):
+    def profile(self, is_start: bool = True, profile_prefix: str | None = None):
         if self.profiler is None:
             raise RuntimeError("Profiling is not enabled.")
         if is_start:
@@ -794,7 +803,8 @@ class WorkerFL(WorkerBase):
             self.profiler.stop()
 
     def execute_dummy_batch(self) -> None:
-        self.model_runner._dummy_run(1, uniform_decode=True)
+        num_tokens = getattr(self.model_runner, "uniform_decode_query_len", 1)
+        self.model_runner._dummy_run(num_tokens, uniform_decode=True)
 
     def add_lora(self, lora_request: LoRARequest) -> bool:
         return self.model_runner.add_lora(lora_request)

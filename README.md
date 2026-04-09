@@ -16,6 +16,7 @@ In theory, vllm-plugin-FL can support all models available in vLLM, as long as n
 | MiniCPM-o 4.5 | Supported | [example](./examples/minicpm/) |
 | GLM-5 | Supported | [example](./examples/glm_5_offline_inference.py) |
 | Qwen3.5-35B-A3B | Supported | [example](./examples/glm_5_offline_inference.py)  |
+| BAAI/bge-m3 | Supported | [implementation](./vllm_fl/models/bge_m3.py) |
 
 ### Supported Chips
 
@@ -34,7 +35,7 @@ In theory, vllm-plugin-FL can support all models available in vLLM, as long as n
 
 ### Setup
 
-1. Install vllm from the official [v0.13.0](https://github.com/vllm-project/vllm/tree/v0.13.0) (optional if the correct version is installed) or from the fork [vllm-FL](https://github.com/flagos-ai/vllm-FL).
+1. Install vllm from the official [v0.18.1](https://github.com/vllm-project/vllm/tree/v0.18.1) (optional if the correct version is installed) or from the fork [vllm-FL](https://github.com/flagos-ai/vllm-FL).
 
 
 2. Install vllm-plugin-FL
@@ -65,6 +66,7 @@ In theory, vllm-plugin-FL can support all models available in vLLM, as long as n
 
     ```sh
     git clone https://github.com/flagos-ai/FlagGems
+    git checkout v5.0.0
     cd FlagGems
     pip install --no-build-isolation .
     # or editble install

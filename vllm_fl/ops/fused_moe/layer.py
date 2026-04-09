@@ -11,8 +11,8 @@ from functools import partial
 import vllm.envs as envs
 from vllm.model_executor.layers.fused_moe import FusedMoE
 from vllm.model_executor.layers.fused_moe.layer import UnquantizedFusedMoEMethod
-from vllm.model_executor.layers.fused_moe.routing_simulator import RoutingSimulator
-from vllm.model_executor.layers.fused_moe.fused_moe import grouped_topk
+from vllm.model_executor.layers.fused_moe.router.routing_simulator_router import RoutingSimulator
+from vllm.model_executor.layers.fused_moe.router.grouped_topk_router import grouped_topk
 from vllm.platforms import current_platform
 from vllm._aiter_ops import rocm_aiter_ops
 from vllm.model_executor.layers.fused_moe.rocm_aiter_fused_moe import (
@@ -21,7 +21,7 @@ from vllm.model_executor.layers.fused_moe.rocm_aiter_fused_moe import (
 
 
 if current_platform.is_cuda_alike():
-    from vllm.model_executor.layers.fused_moe.fused_moe import (
+    from vllm.model_executor.layers.fused_moe.router.base_router import (
         eplb_map_to_physical_and_record,
     )
 else:
@@ -49,13 +49,11 @@ class UnquantizedFusedMoEMethodFL(UnquantizedFusedMoEMethod):
         self,
         layer: "FusedMoE",  # type: ignore[name-defined] # noqa: F821
         x: torch.Tensor,
-        router_logits: torch.Tensor,
+        topk_weights: torch.Tensor,
+        topk_ids: torch.Tensor,
+        shared_experts_input: torch.Tensor | None,
     ) -> torch.Tensor | tuple[torch.Tensor, torch.Tensor]:
-        topk_weights, topk_ids, zero_expert_result = layer.select_experts(
-            hidden_states=x,
-            router_logits=router_logits,
-        )
-        result = fused_experts(
+        return fused_experts(
             hidden_states=x,
             w1=layer.w13_weight,
             w2=layer.w2_weight,
@@ -67,17 +65,6 @@ class UnquantizedFusedMoEMethodFL(UnquantizedFusedMoEMethod):
             global_num_experts=layer.global_num_experts,
             expert_map=layer.expert_map,
         )
-
-        if layer.zero_expert_num != 0 and layer.zero_expert_type is not None:
-            assert not isinstance(result, tuple), (
-                "Shared + zero experts are mutually exclusive not yet supported"
-            )
-            return result, zero_expert_result
-        else:
-            return result
-
-    forward_native = forward_oot
-
 
 class FusedMoEFL(FusedMoE):
     def forward_oot(
@@ -96,12 +83,12 @@ class FusedMoEFL(FusedMoE):
 
         if self.shared_experts is None:
             fused_output = torch.ops.vllm.moe_forward(
-                hidden_states, router_logits, self.layer_name
+                hidden_states, router_logits, None, self.layer_name
             )
             return fused_output[..., :og_hidden_states]
         else:
             shared_output, fused_output = torch.ops.vllm.moe_forward_shared(
-                hidden_states, router_logits, self.layer_name
+                hidden_states, router_logits, None, self.layer_name
             )
             return (
                 shared_output[..., :og_hidden_states],
@@ -127,7 +114,7 @@ class FusedMoEFL(FusedMoE):
             plain MoE implementations without redundant experts.
         """
         from vllm_fl.ops.fused_moe.fused_moe import fused_topk
-        from vllm.model_executor.layers.fused_moe.fused_moe import fused_topk_bias
+        from vllm.model_executor.layers.fused_moe.router.fused_topk_bias_router import fused_topk_bias
 
         if self.enable_eplb:
             if self.quant_method.supports_eplb:

@@ -59,6 +59,21 @@ class ReferenceBackend(Backend):
 
         return silu_and_mul_torch(obj, x)
 
+    def gelu_and_mul(self, obj, x: torch.Tensor) -> torch.Tensor:
+        """
+        GELU activation followed by element-wise multiplication.
+
+        Args:
+            obj: The calling obj (for interface consistency)
+            x: Input tensor of shape [..., 2*d]
+
+        Returns:
+            Output tensor of shape [..., d]
+        """
+        from .impl.activation import gelu_and_mul_torch
+
+        return gelu_and_mul_torch(obj, x)
+
     def rms_norm(
         self,
         obj,
@@ -135,7 +150,7 @@ class ReferenceBackend(Backend):
             Fully qualified class path string (vLLM native backend)
         """
         # Return vLLM's native flash attention backend as reference
-        from vllm.attention.backends.registry import AttentionBackendEnum
+        from vllm.v1.attention.backends.registry import AttentionBackendEnum
 
         if use_mla:
             # vLLM native MLA backend
