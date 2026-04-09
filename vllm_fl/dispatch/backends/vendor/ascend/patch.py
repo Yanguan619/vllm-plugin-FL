@@ -48,7 +48,7 @@ def patch_fused_moe():
     try:
         import vllm_fl.ops.fused_moe.fused_moe as fused_moe_lib
 
-        from .impl.fused_moe import fused_experts_impl
+        from flag_gems import fused_experts_impl
 
         fused_moe_lib.fused_experts_impl = fused_experts_impl
 
