@@ -52,7 +52,7 @@ def patch_fused_moe():
 
         fused_moe_lib.fused_experts_impl = fused_experts_impl
 
-        logger.info("Patched fl_ops.FLOps for Ascend")
+        logger.info("Patched fused_moe for Ascend")
     except Exception as e:
         logger.warning("Failed to patch fused_moe ops: %s", e)
 
