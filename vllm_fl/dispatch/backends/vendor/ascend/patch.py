@@ -45,6 +45,7 @@ def patch_causal_conv1d():
 
 def patch_fused_moe():
     """Patch fused MoE ops with Ascend implementations."""
+    # TODO ops' triton implementation is not ready yet
     from .impl.fused_moe import fused_experts_impl
     try:
         import vllm_fl.ops.fused_moe.fused_moe as fused_moe_lib
