@@ -2,6 +2,7 @@
 
 import logging
 
+import torch
 import vllm
 
 logger = logging.getLogger(__name__)
@@ -20,11 +21,36 @@ def apply_ascend_patches():
     patch_fused_moe()
 
 def patch_mamba_config():
-    """Patch HybridAttentionMambaModelConfig for Ascend."""
+    """Platform Patch HybridAttentionMambaModelConfig for Ascend."""
     from .patches.patch_mamba_config import verify_and_update_config
 
     vllm.model_executor.models.config.HybridAttentionMambaModelConfig.verify_and_update_config = verify_and_update_config
     logger.info("Patched HybridAttentionMambaModelConfig for Ascend")
+
+def empty_cache():
+    torch.npu.empty_cache()
+
+
+def patch_empty_cache() -> None:
+    """Platform Patch empty_cache for Ascend."""
+    torch.accelerator.empty_cache = empty_cache
+
+    # Monkey-patch torch.accelerator memory APIs for NPU compatibility.
+    # Upstream vLLM (commit 747b068) replaced current_platform.memory_stats()
+    # with torch.accelerator.memory_stats(), but torch.accelerator does not
+    # properly delegate to NPU. We redirect to torch.npu.* equivalents.
+    torch.accelerator.memory_stats = torch.npu.memory_stats  # type: ignore[attr-defined]
+    torch.accelerator.memory_reserved = torch.npu.memory_reserved  # type: ignore[attr-defined]
+    torch.accelerator.reset_peak_memory_stats = torch.npu.reset_peak_memory_stats  # type: ignore[attr-defined]
+
+
+def patch_sampler():
+    """Platform Patch sampler ops with Ascend."""
+    import vllm.v1.sample.ops.topk_topp_sampler as topk_topp_sampler_lib
+
+    from .impl.sampler import apply_top_k_top_p
+    topk_topp_sampler_lib.apply_top_k_top_p = apply_top_k_top_p
+
 
 def patch_causal_conv1d():
     """Patch causal_conv1d ops with Ascend implementations."""
@@ -45,15 +71,25 @@ def patch_causal_conv1d():
 
 def patch_fused_moe():
     """Patch fused MoE ops with Ascend implementations."""
+    from .impl.fused_moe import fused_experts_impl
+
+    # TODO : add this after flag_gems ops' acc is solved
+    # try:
+    #     from flag_gems import fused_experts_impl
+    #     logger.info("use fused_experts_impl from flag_gems.")
+    # except Exception as e:
+    #     from .impl.fused_moe import fused_experts_impl
     try:
-        from flag_gems import fused_experts_impl
-        logger.info("use fused_experts_impl from flag_gems.")
-    except Exception as e:
-        from .impl.fused_moe import fused_experts_impl
-    try:
+        import vllm.model_executor.layers.fused_moe.router.fused_topk_router as fused_topk_router_lib
+
         import vllm_fl.ops.fused_moe.fused_moe as fused_moe_lib
+        from vllm_fl.dispatch import resolve_op
 
         fused_moe_lib.fused_experts_impl = fused_experts_impl
+
+        # fused_topk
+        resolve_op("topk_softmax")
+        fused_topk_router_lib.fused_topk = fused_moe_lib.fused_topk
 
         logger.info("Patched fused_moe for Ascend")
     except Exception as e:

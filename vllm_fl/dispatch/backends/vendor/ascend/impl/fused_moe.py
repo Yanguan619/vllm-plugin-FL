@@ -69,7 +69,9 @@ def _torch_fused_experts_impl(
         # First matmul: expert_input @ w1[expert_idx].T
         # w1[expert_idx] shape: [N, hidden_dim], result: [n, N]
         gate_up = torch.mm(expert_input, w1[expert_idx].t())
-
+        # v0.18.1: activation may be a MoEActivation enum; normalize to str
+        if hasattr(activation, "value"):
+            activation = activation.value
         # Activation (pure PyTorch to avoid Triton kernel issues on NPU)
         if activation == "silu":
             d = gate_up.shape[-1] // 2

@@ -11,8 +11,17 @@ from __future__ import annotations
 from typing import Optional, Union
 
 import torch
+from vllm.v1.attention.backends.registry import AttentionBackendEnum, register_backend
 
 from vllm_fl.dispatch.backends.base import Backend
+
+
+def register_attention_backends():
+    register_backend(
+            backend=AttentionBackendEnum.FLASH_ATTN,
+            class_path="vllm_fl.dispatch.backends.vendor.ascend.impl.attention.AscendAttentionBackend",
+            is_mamba=False,
+        )
 
 
 class AscendBackend(Backend):
@@ -141,8 +150,11 @@ class AscendBackend(Backend):
         Returns:
             Fully qualified class path string
         """
+        # register before selection
+        register_attention_backends()
+
         if use_mla:
             if use_sparse:
                 raise NotImplementedError("MLA with sparse attention is not implemented for Ascend yet.")
             return "vllm_fl.dispatch.backends.vendor.ascend.impl.attention.AscendMLABackend"
-        return "vllm_fl.dispatch.backends.vendor.ascend.impl.attention.AscendAttentionBackend"
+        return AttentionBackendEnum.FLASH_ATTN.get_path()

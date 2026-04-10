@@ -38,6 +38,7 @@ from vllm.config import VllmConfig, get_current_vllm_config
 from vllm.utils.math_utils import cdiv
 from vllm.v1.attention.backend import AttentionCGSupport
 from vllm.v1.attention.backends.utils import CommonAttentionMetadata
+from vllm.v1.attention.backends.registry import AttentionBackendEnum, register_backend
 
 from vllm_fl.dispatch.backends.vendor.ascend.impl.attention_mask import (
     AttentionMaskBuilder,
@@ -422,6 +423,7 @@ class AscendAttentionMetadataBuilder:
         return False
 
 
+@register_backend(AttentionBackendEnum.FLASH_ATTN)
 class AscendAttentionBackend(AttentionBackend):
     """
     Ascend NPU native attention backend.
@@ -433,7 +435,7 @@ class AscendAttentionBackend(AttentionBackend):
 
     @staticmethod
     def get_name() -> str:
-        return "ASCEND_FL"
+        return "FLASH_ATTN"
 
     @staticmethod
     def get_impl_cls() -> Type["AscendAttentionBackendImpl"]:
