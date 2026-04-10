@@ -2,7 +2,10 @@
 
 import os
 import logging
+
 from vllm_fl.utils import get_op_config as _get_op_config
+
+from . import version as version  # PyTorch-style: vllm_fl.version.git_version
 
 
 logger = logging.getLogger(__name__)
@@ -93,7 +96,7 @@ def register_model():
     try:
         ModelRegistry.register_model(
             "KimiK25ForConditionalGeneration",
-            "vllm_fl.models.kimi_k25:KimiK25ForConditionalGeneration"
+            "vllm_fl.models.kimi_k25:KimiK25ForConditionalGeneration",
         )
     except Exception as e:
         logger.error(f"Register KimiK25 model error: {str(e)}")
@@ -113,3 +116,12 @@ def register_model():
         )
     except Exception as e:
         logger.error(f"Register GlmMoeDsa model error: {str(e)}")
+
+    # Register BGE-M3 pooling backport for vLLM 0.13.x
+    try:
+        ModelRegistry.register_model(
+            "BgeM3EmbeddingModel",
+            "vllm_fl.models.bge_m3:BgeM3EmbeddingModel",
+        )
+    except Exception as e:
+        logger.error(f"Register BgeM3EmbeddingModel error: {str(e)}")
